@@ -6,6 +6,8 @@ Phase 1 modernizes the existing export screen: true temporary render resolution 
 
 ## Current state
 
+Update: at the user's request,0.4.2 is now installed with matching source/binary hashes. It defers graphics initialization until the Export menu opens. Settings remain Render export,3840x2160,D:\VYNE\Output. Startup and4K output still await user validation; quarantine statements below describe the preceding recovery step.
+
 User reported 0.4.1 freezing FiveM at launch. The installed ASI has been quarantined outside the plugins folder; VYNE is currently disabled. Version 0.4.2 defers graphics-device access and hook setup until the native Export menu has completed its first build, and adds initialization-stage logging. It is built locally and deliberately remains uninstalled. Exact hang mechanism and runtime recovery remain unverified.
 
 Version 0.4.1 corrects the additional monitor-size clamp in the temporary window-mode path and adds live wait/cancellation diagnostics. Built, locally checked and installed after the user closed FiveM. GTA 4K output remains unverified.

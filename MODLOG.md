@@ -1,5 +1,10 @@
 # VYNE development journal
 
+## 2026-10-26 — Revised startup build installed at user's request
+
+- User explicitly requested installing the fix so it can be tested. Confirmed no FiveM GTAProcess running, then installed0.4.2. Source/installed SHA256 both7C5FFF604E0212C90AD7E0BDA104387C7F9C896E27F1F539E9C7682A61E3A6DE. Readback preserves Render export,3840x2160 and D:\VYNE\Output. Quarantined0.4.1 remains outside plugins.
+- Current state is VYNE ENABLED with revised deferred graphics initialization. Local checks passed previously; actual startup, Export-menu initialization and4K output remain user runtime checks. Next: launch FiveM, open VYNE_Test Export, Render export3840x2160, press Export. Inspect new initialization-stage logs if it stops. Agent did not launch or drive the game.
+
 ## 2026-10-26 — Startup hang report; ASI quarantined (0.4.2 local mitigation)
 
 - User reports FiveM becomes unresponsive immediately at launch with0.4.1. Moved only installed VYNE.asi to build/quarantine/VYNE-0.4.1-20261026-135924-967.asi.disabled. Verified no VYNE.asi remains in plugins. No game process was running at inspection; no process killed, no game launched, unrelated plugins/settings preserved.
