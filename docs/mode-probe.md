@@ -1,6 +1,6 @@
 # VYNE 0.2.0 mode probe
 
-This is the first resolution feasibility build, not an exporter. In-game verification belongs to the user. VYNE remains removed from the active plugins folder while the user compares native clip loading.
+This is the first resolution feasibility build, not an exporter. In-game verification belongs to the user. After the user confirmed a fresh clip works and saved VYNE_Test, FiveM was observed closed and the 0.2.0 probe was installed with EnableModeProbe=1. The user has not yet tested the probe.
 
 ## Build and install when the clean clip is ready
 

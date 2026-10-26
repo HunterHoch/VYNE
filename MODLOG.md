@@ -51,3 +51,5 @@
 - User recorded a new clip and saved a Rockstar Editor project named VYNE_Test with camera markers. New clip/project no longer crashes without VYNE. The earlier failure was reproducible without VYNE and is associated with the old clip; do not claim the old clip's exact corruption/build cause is known.
 - VYNE_Test is the intended export acceptance fixture. Keep it intact. Agent does not drive the editor; user handles testing.
 - Native Export is still stock. The 0.2.0 probe tests render-mode feasibility only and is not wired to Export; no misleading export-ready claim.
+
+- After observing no FiveM GTAProcess running, installed 0.2.0 via scripts/Install-TestBuild.ps1 -EnableModeProbe. Source and installed SHA256 both FA422C7310F642F1B53502C4B3F64B4EF35583FC9C5A9B1AAAFDC483C2FD1E52. Only VYNE.asi and VYNE/VYNE.ini installed; previous experimental binary remains quarantined. User instructed to reopen VYNE_Test, press F6 once, observe five-second 4K request/restore, F7 to cancel. No agent-driven runtime test performed.

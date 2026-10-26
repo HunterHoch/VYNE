@@ -10,7 +10,7 @@ Original Windows x64 diagnostic ASI. Automatic loading in FiveM build 3258 is co
 
 Version 0.2.0 includes a default-off build3258-only mode probe and a tested switch/restore state machine. See [the probe guide](docs/mode-probe.md). No Export UI takeover, clean scene capture or encoding yet. The user owns in-game testing; do not drive the game or run further runtime experiments unless requested.
 
-The earlier game-script/render-command probe was removed after a reported clip-load crash. The user confirmed the same crash with VYNE removed, so VYNE is not required to reproduce it; the native clip-load cause remains unresolved. No new probe binary is installed while the user prepares a fresh baseline clip.
+The earlier game-script/render-command probe was removed after a reported clip-load crash. The user confirmed the same crash with VYNE removed, then recorded a new clip and saved a working project, VYNE_Test. The exact old-clip failure remains unresolved. With FiveM closed, the new 0.2.0 probe was installed and explicitly enabled for the user's first mode-switch test. No mode-switch success is claimed yet.
 
 ## Build
 
