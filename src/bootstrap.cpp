@@ -2,10 +2,12 @@
 #include <filesystem>
 #include <fstream>
 #include <vector>
+#include "native_mode_probe.h"
 
 namespace {
 HMODULE plugin_module = nullptr;
 INIT_ONCE initialized = INIT_ONCE_STATIC_INIT;
+HANDLE startup_thread = nullptr;
 
 std::wstring module_path(HMODULE module) {
     std::vector<wchar_t> buffer(32768);
@@ -42,7 +44,7 @@ BOOL CALLBACK diagnose(PINIT_ONCE, PVOID, PVOID*) noexcept {
         if (!log) return FALSE;
         SYSTEMTIME time{};
         GetSystemTime(&time);
-        log << L"VYNE 0.1.0 diagnostics UTC " << time.wYear << L'-' << time.wMonth
+        log << L"VYNE 0.2.0 diagnostics UTC " << time.wYear << L'-' << time.wMonth
             << L'-' << time.wDay << L' ' << time.wHour << L':' << time.wMinute << L':' << time.wSecond
             << L"\npid=" << GetCurrentProcessId() << L"\nplugin=" << own_path << L"\n";
         const auto host = module_path(nullptr);
@@ -64,8 +66,8 @@ BOOL CALLBACK diagnose(PINIT_ONCE, PVOID, PVOID*) noexcept {
 }
 }
 
-// Explicit initialization keeps filesystem/version queries outside the loader lock.
-// The FiveM loader integration must be validated before deployment.
+// Explicit initialization also supports isolated host checks. FiveM itself
+// uses LoadLibrary, so its startup path is the worker scheduled by DllMain.
 extern "C" __declspec(dllexport) BOOL VYNE_RunDiagnostics() noexcept {
     return InitOnceExecuteOnce(&initialized, diagnose, nullptr, nullptr);
 }
@@ -74,7 +76,30 @@ extern "C" __declspec(dllexport) void InitializeASI() noexcept {
     VYNE_RunDiagnostics();
 }
 
+namespace {
+DWORD WINAPI startup(void*) {
+    // FiveM uses LoadLibrary rather than InitializeASI. The new thread starts
+    // after DllMain releases the loader lock; keep our code mapped while it runs.
+    HMODULE reference = nullptr;
+    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
+        reinterpret_cast<LPCWSTR>(&startup), &reference)) return 1;
+    VYNE_RunDiagnostics();
+    vyne::start_native_mode_probe(plugin_module);
+    FreeLibraryAndExitThread(reference, 0);
+}
+}
+
+extern "C" __declspec(dllexport) BOOL VYNE_WaitForStartup(DWORD timeout) noexcept {
+    return startup_thread && WaitForSingleObject(startup_thread, timeout) == WAIT_OBJECT_0;
+}
+
 BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID) {
-    if (reason == DLL_PROCESS_ATTACH) plugin_module = module;
+    if (reason == DLL_PROCESS_ATTACH) {
+        plugin_module = module;
+        startup_thread = CreateThread(nullptr, 0, startup, nullptr, 0, nullptr);
+        if (!startup_thread) return FALSE;
+    } else if (reason == DLL_PROCESS_DETACH && startup_thread) {
+        CloseHandle(startup_thread);
+    }
     return TRUE;
 }

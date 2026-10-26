@@ -6,7 +6,11 @@ Phase 1 modernizes the existing export screen: true temporary render resolution 
 
 ## Current state
 
-Original Windows x64 diagnostic ASI bootstrap. No game hooks, export interception, mode changes or encoding yet. `InitializeASI` / `VYNE_RunDiagnostics` explicitly run diagnostics outside DllMain; automatic invocation by FiveM has **not** been verified. Diagnostics record host path/version and loaded graphics modules, without treating these as proof of game build, active renderer or render dimensions.
+Original Windows x64 diagnostic ASI. Automatic loading in FiveM build 3258 is confirmed by the installed plugin's diagnostic log. FiveM uses LoadLibrary and requires an `FX_ASI_BUILD` resource; initialization therefore runs on a short worker after the loader lock is released. The current resource declares build 3258 only.
+
+Version 0.2.0 includes a default-off build3258-only mode probe and a tested switch/restore state machine. See [the probe guide](docs/mode-probe.md). No Export UI takeover, clean scene capture or encoding yet. The user owns in-game testing; do not drive the game or run further runtime experiments unless requested.
+
+The earlier game-script/render-command probe was removed after a reported clip-load crash. The user confirmed the same crash with VYNE removed, so VYNE is not required to reproduce it; the native clip-load cause remains unresolved. No new probe binary is installed while the user prepares a fresh baseline clip.
 
 ## Build
 
@@ -25,7 +29,7 @@ Alternatively, run `scripts\build.cmd` from an x64 Visual Studio Developer Comma
 
 Talos workspace: Hoch Interactive. Plan: **VYNE — Rockstar Editor & Cinematic Tools** (`205deb37-ac7a-493b-89cc-3e3e7fd80095`). Canonical specification: `18fa536a-4db0-4e1e-ab21-936e220fd7b8`, revision 2. Preserve its 12 tasks, four milestones and separate Concept phase.
 
-First gate: prove loading in a permitted FiveM session, measure actual render targets, then demonstrate reversible 2560×1440 → 3840×2160 → original mode. Compilation alone does not pass this gate.
+First gate: loading has been observed on build 3258; measure actual render targets, then implement and demonstrate reversible 2560×1440 → 3840×2160 → original mode. Compilation alone does not pass this gate.
 
 No REPlus source, history or dependencies. No game binaries, extracted assets or proprietary source belong in this repository.
 
