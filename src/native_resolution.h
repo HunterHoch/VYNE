@@ -10,4 +10,5 @@ void reset_resolution_gpu_observation() noexcept;
 void begin_resolution_gpu_observation() noexcept;
 bool resolution_gpu_verified() noexcept;
 int resolution_encoder_result() noexcept;
+void set_resolution_window_target(unsigned width, unsigned height) noexcept;
 }

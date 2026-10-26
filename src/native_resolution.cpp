@@ -31,6 +31,9 @@ std::atomic_bool installed{false};
 std::atomic_int verification{0}; // 0 awaiting source, 1 observed source, -1 failed.
 std::atomic_int encoder_result{0}; // Finalize succeeds (1), failure/cancel (-1).
 std::atomic_uint64_t encoder_epoch{0};
+std::atomic_uint64_t window_target{0};
+using FitWindow = bool(*)(RECT*, DWORD);
+FitWindow original_fit_window = nullptr;
 using CreateWriter = HRESULT(WINAPI*)(LPCWSTR, IMFByteStream*, IMFAttributes*, IMFSinkWriter**);
 CreateWriter original_create_writer = nullptr;
 std::mutex texture_mutex;
@@ -139,6 +142,22 @@ void limit(unsigned* width, unsigned* height, unsigned source_width, unsigned so
         *width = requested_width; *height = requested_height;
     }
 }
+bool fit_window(RECT* rectangle, DWORD style) {
+    const auto caller = reinterpret_cast<std::uintptr_t>(_ReturnAddress()) - image_base;
+    const auto result = original_fit_window(rectangle, style);
+    const auto target = window_target.load();
+    // Native mode request and its frame-boundary resize validation both use
+    // this monitor-fitting routine. Preserve its normal result for every
+    // other caller and outside the temporary VYNE mode transaction.
+    if (target && rectangle && (caller == 0x13a0398 || caller == 0x13a0865)) {
+        RECT desired{0, 0, static_cast<LONG>(target >> 32), static_cast<LONG>(target)};
+        if (AdjustWindowRectEx(&desired, style, FALSE, 0)) {
+            rectangle->right = rectangle->left + desired.right - desired.left;
+            rectangle->bottom = rectangle->top + desired.bottom - desired.top;
+        } else fail("could not calculate selected-resolution client rectangle");
+    }
+    return result;
+}
 unsigned char export_texture(void* context, unsigned width, unsigned height, unsigned format) {
     unsigned requested_width = 0, requested_height = 0;
     const bool active = vyne::resolution_export_dimensions(requested_width, requested_height);
@@ -219,7 +238,10 @@ bool vyne::install_native_resolution(std::uintptr_t base, IDXGISwapChain* chain,
     if (!matches(base + 0x31e3dc, "\x48\x89\x5c\x24\x08\x57\x48\x83\xec\x30\x41\xba\x80\x02\x00\x00", 16) ||
         !matches(base + 0x31e3f7, "\xb8\x80\x07\x00\x00", 5) ||
         !matches(base + 0x31e410, "\xb9\x38\x04\x00\x00", 5) ||
-        !matches(base + 0x325594, "\x40\x53\x48\x81\xec\xa0\x00\x00\x00\x89\x11\x48\x8b\xd9", 14)) return false;
+        !matches(base + 0x325594, "\x40\x53\x48\x81\xec\xa0\x00\x00\x00\x89\x11\x48\x8b\xd9", 14) ||
+        !matches(base + 0x1395a74, "\x48\x89\x5c\x24\x08\x48\x89\x74\x24\x10\x55\x57\x41\x56", 14) ||
+        !matches(base + 0x1395b7c, "\x3b\xf8\x7e\x13", 4) ||
+        !matches(base + 0x1395b93, "\x3b\xf1\x7e\x15", 4)) return false;
     ComPtr<ID3D11Device> device;
     if (FAILED(chain->GetDevice(IID_PPV_ARGS(&device)))) return false;
     ComPtr<ID3D11DeviceContext> context; device->GetImmediateContext(context.GetAddressOf());
@@ -229,13 +251,14 @@ bool vyne::install_native_resolution(std::uintptr_t base, IDXGISwapChain* chain,
     const auto create_media_writer = media ? reinterpret_cast<void*>(GetProcAddress(media, "MFCreateSinkWriterFromURL")) : nullptr;
     if (!create_media_writer) return false;
     struct Hook { void* target; void* replacement; void** original; };
-    const std::array<Hook, 6> hooks{{
+    const std::array<Hook, 7> hooks{{
         {reinterpret_cast<void*>(base + 0x31e3dc), reinterpret_cast<void*>(&limit), reinterpret_cast<void**>(&original_limit)},
         {reinterpret_cast<void*>(base + 0x325594), reinterpret_cast<void*>(&export_texture), reinterpret_cast<void**>(&original_export_texture)},
         {device_table[5], reinterpret_cast<void*>(&create_texture), reinterpret_cast<void**>(&original_create_texture)},
         {context_table[13], reinterpret_cast<void*>(&draw), reinterpret_cast<void**>(&original_draw)},
         {context_table[12], reinterpret_cast<void*>(&draw_indexed), reinterpret_cast<void**>(&original_draw_indexed)},
-        {create_media_writer, reinterpret_cast<void*>(&create_writer), reinterpret_cast<void**>(&original_create_writer)}
+        {create_media_writer, reinterpret_cast<void*>(&create_writer), reinterpret_cast<void**>(&original_create_writer)},
+        {reinterpret_cast<void*>(base + 0x1395a74), reinterpret_cast<void*>(&fit_window), reinterpret_cast<void**>(&original_fit_window)}
     }};
     unsigned created = 0;
     for (; created < hooks.size(); ++created) {
@@ -267,3 +290,6 @@ void vyne::reset_resolution_gpu_observation() noexcept { std::lock_guard guard(t
 void vyne::begin_resolution_gpu_observation() noexcept { reset_resolution_gpu_observation(); ++encoder_epoch; verification.store(0); encoder_result.store(0); }
 bool vyne::resolution_gpu_verified() noexcept { return verification.load() == 1; }
 int vyne::resolution_encoder_result() noexcept { return encoder_result.load(); }
+void vyne::set_resolution_window_target(unsigned width, unsigned height) noexcept {
+    window_target.store(width && height ? (static_cast<std::uint64_t>(width) << 32) | height : 0);
+}

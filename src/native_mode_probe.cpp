@@ -29,6 +29,7 @@ std::atomic_int export_result{0};
 std::atomic<std::uint64_t> export_dimensions{0};
 std::uint64_t export_deadline = 0;
 std::uint64_t finalize_deadline = 0;
+std::uint64_t next_mode_observation = 0;
 bool* playback_active = nullptr;
 int* playback_type = nullptr;
 bool* delayed_close = nullptr;
@@ -70,8 +71,12 @@ bool request(void*, const vyne::GraphicsState& state) noexcept {
     // Leave refresh/fullscreen/opaque sixth field exactly as captured. Calling
     // the game-owned entry respects FiveM's own wrapper and resource reset.
     // Its false return can mean queued, not rejected; verify queue and pixels.
-    change_mode(native.data());
-    return readable(requested_mode, 24) && std::memcmp(requested_mode, native.data(), 24) == 0;
+    if (vyne::native_resolution_available()) vyne::set_resolution_window_target(state.width, state.height);
+    const auto accepted = change_mode(native.data());
+    const auto queued = readable(requested_mode, 24) && std::memcmp(requested_mode, native.data(), 24) == 0;
+    try { note("native_mode_request=" + std::to_string(state.width) + "x" + std::to_string(state.height) +
+        " return=" + std::to_string(accepted) + " queue_matches=" + std::to_string(queued)); } catch (...) {}
+    return queued;
 }
 
 bool dimensions(void*, vyne::RenderDimensions& out) noexcept {
@@ -124,6 +129,13 @@ void probe_tick() {
     }
     key_down = pressed;
     if (!session) return;
+    if (now >= next_mode_observation) {
+        next_mode_observation = now + 1000;
+        vyne::RenderDimensions actual{}; const auto measured = dimensions(nullptr, actual);
+        note("mode_wait state=" + std::to_string(static_cast<int>(session->status())) +
+            " GPU=" + (measured ? std::to_string(actual.width) + "x" + std::to_string(actual.height) : "unavailable") +
+            " focused=" + std::to_string(foreground));
+    }
     const auto prior = session->status();
     const bool exporting = export_mode.load();
     const bool running = export_started.load();
@@ -158,7 +170,11 @@ void probe_tick() {
             if (readable(delayed_close, 1)) *delayed_close = true;
             probe_phase.store(8);
         }
-    } else if (cancel) session->cancel(now);
+    } else if (cancel) {
+        if (session->status() == vyne::ModeStatus::switching || session->status() == vyne::ModeStatus::ready)
+            note("cancel_reason=" + std::string(!foreground ? "focus_lost" : export_failed.load() ? "export_failure" : "F7"));
+        session->cancel(now);
+    }
     // Resource reset must wait for native playback teardown. In particular,
     // the generic session's ready-state drift handler would otherwise restore
     // while GTA still owns active encoder/capture resources.
@@ -182,6 +198,7 @@ void probe_tick() {
         probe_phase.store(5); probe_busy.store(false);
         export_mode.store(false); export_started.store(false); export_dimensions.store(0);
         export_deadline = 0; finalize_deadline = 0; vyne::reset_resolution_gpu_observation();
+        vyne::set_resolution_window_target(0, 0); next_mode_observation = 0;
     } else if (session->status() == vyne::ModeStatus::restore_failed) {
         if (exporting) export_result.store(-1);
         // Keep the session and recovery record. Never silently re-arm after
@@ -192,6 +209,7 @@ void probe_tick() {
         if (exporting) export_result.store(-1);
         note(session->error()); session.reset(); probe_phase.store(-1); probe_busy.store(false);
         export_mode.store(false); export_dimensions.store(0); export_started.store(false);
+        vyne::set_resolution_window_target(0, 0); next_mode_observation = 0;
     }
 }
 

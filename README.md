@@ -6,6 +6,8 @@ Phase 1 modernizes the existing export screen: true temporary render resolution 
 
 ## Current state
 
+Version 0.4.1 corrects the additional monitor-size clamp in the temporary window-mode path and adds live wait/cancellation diagnostics. It is built and locally checked, pending installation while the user's current FiveM process is running. GTA 4K output remains unverified.
+
 Version 0.4.0 adds **Render export**: selected game mode, session-scoped bypass of GTA's native 1080p clamp, GPU/encoder dimension checks and restoration around the native bake pipeline. See [resolution export](docs/resolution-export.md). Native audio, timing and presentation remain engine-owned. Windows H.264 encoding at 3840×2160 passes locally; actual GTA 4K export and restoration still require the user's test. The compact folder display and completion redraw fix are included.
 
 Original Windows x64 diagnostic ASI. Automatic loading in FiveM build 3258 is confirmed by the installed plugin's diagnostic log. FiveM uses LoadLibrary and requires an `FX_ASI_BUILD` resource; initialization therefore runs on a short worker after the loader lock is released. The current resource declares build 3258 only.

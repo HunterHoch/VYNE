@@ -1,5 +1,7 @@
 # Selected-resolution export — 0.4.0
 
+0.4.1 correction: the native window rectangle fitting helper also caps an oversized window to monitor dimensions. Both independently mapped video-mode callers now preserve the temporary selected client dimensions after that fit, while all other callers retain native behavior. The original mode dimensions are supplied during restoration and the override is cleared after restoration. No desktop resolution or driver settings change. Actual GPU sizes, request/queue outcomes and cancellation reasons are recorded while waiting. This correction still requires user runtime validation.
+
 Open VYNE_Test in the existing Rockstar Editor Export menu. Set **VYNE export → Render export**, **VYNE resolution → 3840 x 2160**, and select the output folder. Use the stock Frame Rate and Bit Rate rows, then press the original **Export** action. Render export is the default when migrating an older configuration without a ResolutionExport key. Native export and the no-file Resolution check remain separate modes.
 
 This independently authored integration uses GTA's existing bake pipeline. The engine handles replay progression, markers, timestamps, audio, compression and its native presentation/watermark behavior. An independent clean capture/encoding pipeline, additional formats, custom frame rates and color controls remain unfinished. Do not infer those features from this resolution implementation.

@@ -1,5 +1,12 @@
 # VYNE development journal
 
+## 2026-10-26 — Export waiting at mode switch (0.4.1)
+
+- User reports Export does not start. Installed logs show two selected-resolution requests from2560x1440 to3840x2160, no GPU-ready event, then cancellation/restoration roughly7-8seconds later. No encoder callback ran. FiveM logs record mode request success but no corresponding backbuffer rebuild. Do not attribute this to encoder failure or claim4K mode switched.
+- Static tracing found a second monitor-size clamp in window rectangle fitting helper RVA0x1395A74. Mode request and frame-boundary resize validation both call it (return addresses0x13A0398/0x13A0865). It adjusts window chrome, then shrinks client dimensions to the monitor bounds. New guarded detour preserves selected temporary client dimensions for those callers only, including original dimensions during restore. Native resize/resource machinery still owns buffer recreation; no direct DXGI ResizeBuffers or desktop/driver changes.
+- Added once-per-second actual GPU-size/focus observations, native request/queue outcomes and explicit cancellation reason. Editor help now redraws on mode status transitions on the UI thread. Prior logs cannot distinguish F7 from focus loss; new logs do. User owns runtime validation; no game control performed.
+- 0.4.1 MSVC /W4 /WX build and all five local checks passed. Built SHA256 D3209B028C92223EB2F3A40748E8C54783746CFBB271C903A193F0C8C68AA019. NOT installed: FiveM_b3258_GTAProcess PID40224 is still running. Install using scripts/Install-TestBuild.ps1 after user closes it; leave current game session alone.
+
 ## 2026-10-26 — Selected-resolution native bake integration (0.4.0)
 
 - Resumed after usage interruption: unfinished native_resolution.cpp, mode-session orchestration, MP4 dimension checks and platform encoder test were present but uncommitted. 0.3.2 folder-display fix had already been installed while FiveM was closed.

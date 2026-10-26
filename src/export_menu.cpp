@@ -142,6 +142,15 @@ bool selectable(unsigned index, int column, unsigned selected) {
         }
         return false;
     }
+    // Mode readiness/failure changes asynchronously on the rendering thread.
+    // Refresh linked help on this same owning UI callback so the user sees the
+    // reason an export is waiting/refused without having to navigate away.
+    static std::string last_mode_status;
+    if (building < 0 && GetCurrentThreadId() == ui_thread.load() && refresh_menu &&
+        static_cast<int>(index) == export_index.load()) {
+        const auto status = std::string(vyne::resolution_check_status());
+        if (status != last_mode_status) { last_mode_status = status; refresh_menu(-1); }
+    }
     // Focused-input processing reaches this on the native editor UI thread.
     // The dialog worker only publishes completion. Do not rebuild recursively
     // from BuildMenu's greying pass or from another thread.
