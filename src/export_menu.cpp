@@ -2,6 +2,8 @@
 #include "export_menu_layout.h"
 #include "export_settings.h"
 #include "native_mode_probe.h"
+#include "hook_retry.h"
+#include "native_output.h"
 #include <MinHook.h>
 #include <filesystem>
 #include <fstream>
@@ -110,6 +112,8 @@ bool inject() {
 }
 
 int build(unsigned index, char branches, unsigned start_column) {
+    static bool observed = false;
+    if (!observed) { observed = true; note("native BuildMenu callback reached; first index=" + std::to_string(index)); }
     try { inject(); } catch (...) { OutputDebugStringW(L"VYNE: native menu injection refused.\n"); }
     const auto previous = building;
     building = static_cast<int>(index);
@@ -163,7 +167,13 @@ const char* text(void* self, unsigned hash, const char* debug) {
         const auto row = focused_row();
         if (row >= 0) {
             if (hash == description_header.load()) return vyne::export_row_label(static_cast<vyne::ExportRow>(row));
-            if (hash == description_body.load()) return vyne::export_row_help(static_cast<vyne::ExportRow>(row));
+            if (hash == description_body.load()) {
+                if (row == static_cast<int>(vyne::ExportRow::directory)) {
+                    value_text = vyne::native_output_status() + " " + vyne::export_row_help(vyne::ExportRow::directory);
+                    return value_text.c_str();
+                }
+                return vyne::export_row_help(static_cast<vyne::ExportRow>(row));
+            }
         } else if (hash == description_body.load() && vyne::resolution_check_enabled()) {
             return export_refused.load() ? "VYNE could not start the resolution check. See mode-probe.log; native export was not started." : vyne::resolution_check_status();
         }
@@ -174,7 +184,11 @@ const char* text(void* self, unsigned hash, const char* debug) {
 void trigger_export() {
     try {
     const auto settings = vyne::export_settings();
-    if (!settings.resolution_check) { original_trigger(); return; }
+    if (!settings.resolution_check) {
+        try { vyne::watch_native_export(settings.output); }
+        catch (...) { OutputDebugStringW(L"VYNE: output watch unavailable; native exporter remains available.\n"); }
+        original_trigger(); return;
+    }
     const bool queued = vyne::queue_resolution_check(vyne::export_width(settings.resolution), vyne::export_height(settings.resolution));
     export_refused.store(!queued);
     note(queued ? "native Export pressed: queued VYNE resolution check; no bake/file started" : "native Export pressed: mode check unavailable/busy; native bake not started");
@@ -246,10 +260,22 @@ void vyne::install_export_menu(HMODULE module) noexcept {
                 note("hook queue failed; menu left stock"); return;
             }
         }
-        if (MH_ApplyQueued() != MH_OK) {
-            for (const auto& hook : hooks) { MH_DisableHook(reinterpret_cast<void*>(base + hook.rva)); MH_RemoveHook(reinterpret_cast<void*>(base + hook.rva)); }
-            note("hook enable failed; rolled back native menu hooks"); return;
+        unsigned attempts = 0;
+        DWORD win32_error = 0;
+        const auto applied = retry_hook_snapshot([&]() {
+            const auto result = MH_ApplyQueued(); win32_error = GetLastError(); return result;
+        }, [](unsigned delay) { Sleep(delay); }, attempts);
+        if (applied != MH_OK) {
+            note("hook enable failed: " + std::string(MH_StatusToString(applied)) + " Win32=" + std::to_string(win32_error) + " attempts=" + std::to_string(attempts));
+            for (const auto& hook : hooks) {
+                unsigned cleanup_attempts = 0;
+                const auto disabled = retry_hook_snapshot([&]() { return MH_DisableHook(reinterpret_cast<void*>(base + hook.rva)); }, [](unsigned delay) { Sleep(delay); }, cleanup_attempts);
+                if (disabled == MH_OK || disabled == MH_ERROR_DISABLED) MH_RemoveHook(reinterpret_cast<void*>(base + hook.rva));
+                else note("hook cleanup failed RVA=" + std::to_string(hook.rva) + " " + MH_StatusToString(disabled));
+            }
+            return;
         }
+        note("native menu hook batch enabled after attempts=" + std::to_string(attempts));
         note("native menu hooks enabled for build3258; data injection occurs on native BuildMenu");
     } catch (...) { OutputDebugStringW(L"VYNE: native Export menu initialization failed.\n"); }
 }

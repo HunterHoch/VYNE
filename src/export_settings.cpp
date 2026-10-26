@@ -99,14 +99,14 @@ bool vyne::export_row_enabled(ExportRow row) noexcept {
     return row == ExportRow::mode || row == ExportRow::resolution || row == ExportRow::directory;
 }
 const char* vyne::export_row_label(ExportRow row) noexcept {
-    constexpr const char* labels[] = {"VYNE export", "VYNE resolution", "VYNE frame rate", "VYNE bitrate", "VYNE file format", "VYNE color profile", "VYNE project directory"};
+    constexpr const char* labels[] = {"VYNE export", "VYNE resolution", "VYNE frame rate", "VYNE bitrate", "VYNE file format", "VYNE color profile", "Output location"};
     const auto i = static_cast<unsigned>(row); return i < 7 ? labels[i] : "VYNE";
 }
 const char* vyne::export_row_help(ExportRow row) noexcept {
     switch (row) {
-    case ExportRow::mode: return "Off uses Rockstar's exporter. Resolution check makes Export request the selected render mode, hold for five seconds, and restore. It creates no video file yet.";
+    case ExportRow::mode: return "Native export uses Rockstar's encoder and copies the finished MP4 to Output location. Resolution check only tests the selected render mode for five seconds and restores; it creates no video.";
     case ExportRow::resolution: return "Choose the target for VYNE's native Export resolution check. Dimensions must be observed on real GPU buffers before export capture can be enabled.";
-    case ExportRow::directory: return "Press left or right to choose an output folder. The Windows picker runs separately from the render thread. This is not Rockstar's project database.";
+    case ExportRow::directory: return "Press left or right to choose where finished native MP4 exports are copied. The Video Gallery original is preserved. The Windows folder picker runs separately from the render thread.";
     case ExportRow::fps: return "VYNE replay timing is not implemented yet. Use the stock frame-rate control when VYNE export is Off.";
     case ExportRow::bitrate: return "VYNE encoding is not implemented yet. Use the stock bitrate control when VYNE export is Off.";
     case ExportRow::format: return "MP4/H.264 and PNG sequence backends are not implemented yet. This option stays disabled until real output is available.";
@@ -116,7 +116,7 @@ const char* vyne::export_row_help(ExportRow row) noexcept {
 std::string vyne::export_row_value(ExportRow row) {
     const auto value = export_settings();
     switch (row) {
-    case ExportRow::mode: return value.resolution_check ? "Resolution check" : "Off";
+    case ExportRow::mode: return value.resolution_check ? "Resolution check" : "Native export";
     case ExportRow::resolution: return std::to_string(export_width(value.resolution)) + " x " + std::to_string(export_height(value.resolution));
     case ExportRow::directory: {
         if (picker_open.load()) return "Choosing folder...";

@@ -45,7 +45,7 @@ BOOL CALLBACK diagnose(PINIT_ONCE, PVOID, PVOID*) noexcept {
         if (!log) return FALSE;
         SYSTEMTIME time{};
         GetSystemTime(&time);
-        log << L"VYNE 0.3.0 diagnostics UTC " << time.wYear << L'-' << time.wMonth
+        log << L"VYNE 0.3.1 diagnostics UTC " << time.wYear << L'-' << time.wMonth
             << L'-' << time.wDay << L' ' << time.wHour << L':' << time.wMinute << L':' << time.wSecond
             << L"\npid=" << GetCurrentProcessId() << L"\nplugin=" << own_path << L"\n";
         const auto host = module_path(nullptr);

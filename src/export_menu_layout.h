@@ -5,7 +5,7 @@
 
 namespace vyne {
 struct NativeExportOption {
-    std::uint32_t text, block, reserved, link, jump, context, toggle, action, warning, unique;
+    std::uint32_t text, context, block, link, jump, action, toggle, warning, dependent_action, unique;
 };
 template<class T> struct NativeArray {
     T* data;
@@ -20,6 +20,10 @@ struct NativeEditorMenu {
     std::uint32_t selected, padding;
 };
 static_assert(sizeof(NativeExportOption) == 0x28);
+static_assert(offsetof(NativeExportOption, context) == 0x04);
+static_assert(offsetof(NativeExportOption, block) == 0x08);
+static_assert(offsetof(NativeExportOption, action) == 0x14);
+static_assert(offsetof(NativeExportOption, toggle) == 0x18);
 static_assert(sizeof(NativeEditorMenu) == 0x38);
 static_assert(offsetof(NativeEditorMenu, options) == 0x18);
 static_assert(offsetof(NativeEditorMenu, content) == 0x28);

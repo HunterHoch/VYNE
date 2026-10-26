@@ -1,5 +1,14 @@
 # VYNE development journal
 
+## 2026-10-26 — Stock-screen feedback and output delivery (0.3.1)
+
+- User screenshot showed only stock export rows. Installed diagnostics confirmed ASI loading; export-menu.log recorded hook activation failure and rollback, without a precise error status. Native menu integration remains unverified.
+- Reviewed public REPlus row definitions and hook startup handling at user's request; D:\REPlus remains untouched. Corrected independently authored native option layout: Context +4, Block +8, Action +0x14, Warning +0x1C, DependentAction +0x20. Added static assertions and bounded MinHook snapshot/allocation-error retries with terminal status logging. Exact old activation failure is still unknown.
+- Renamed folder row Output location and connected Native export to finished Rockstar MP4 delivery. Worker snapshots the native rendered folder before Export, waits for changed/stable files with no open writer and complete container boxes, then copies through a temporary file without overwriting destination clips. Native gallery originals are preserved; a receipt records the delivered path. Custom VYNE capture/encoding and 4K media remain unfinished.
+- Found the existing native VYNE_Test.mp4 under LocalAppData/Rockstar Games/GTA V/videos/rendered: 1920x1080 H264, 29.97 FPS, AAC audio, 2.769436 seconds. This is native output, not proof of VYNE rendering.
+- MSVC /W4 /WX build and loader, mode rollback, native-row/settings/retry and output tests passed. Output tests also copied the actual native VYNE_Test.mp4 into an ignored test directory and checked byte preservation. No game control or runtime experiment performed; user owns menu appearance, input and game-triggered output validation.
+- Installed 0.3.1 with FiveM closed; source and installed SHA256 both 6CB1F955401BD9F106E20FA295F6C59868A6254DC012BA6A0EF772547C9A7D5C. Previous own binary/config backed up. Default native menu enabled; F6 probe disabled.
+
 ## 2026-10-26 — Bootstrap
 
 - New original source tree: D:\VYNE; private remote: https://github.com/HunterHoch/VYNE.

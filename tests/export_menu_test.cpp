@@ -1,5 +1,6 @@
 #include "../src/export_menu_layout.h"
 #include "../src/export_settings.h"
+#include "../src/hook_retry.h"
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -11,6 +12,14 @@ void require(bool condition, const char* message) {
     if (!condition) { std::cerr << "FAIL: " << message << '\n'; std::exit(1); }
 }
 int main() {
+    unsigned attempts = 0, calls = 0, pauses = 0;
+    const auto recovered = retry_hook_snapshot([&]() { return ++calls < 4 ? MH_ERROR_MEMORY_ALLOC : MH_OK; }, [&](unsigned) { ++pauses; }, attempts);
+    require(recovered == MH_OK && attempts == 4 && pauses == 3, "transient MinHook snapshot failure recovers before hook rollback");
+    calls = pauses = 0;
+    const auto fatal = retry_hook_snapshot([&]() { ++calls; return MH_ERROR_MEMORY_PROTECT; }, [&](unsigned) { ++pauses; }, attempts);
+    require(fatal == MH_ERROR_MEMORY_PROTECT && calls == 1 && pauses == 0, "permanent hook protection error is not retried");
+    const auto exhausted = retry_hook_snapshot([]() { return MH_ERROR_MEMORY_ALLOC; }, [](unsigned) {}, attempts);
+    require(exhausted == MH_ERROR_MEMORY_ALLOC && attempts == 80, "snapshot retry budget is finite");
     std::array<NativeExportOption, 3> stock{};
     stock[0] = {1,2,3,4,5,6,100,8,9,10};
     stock[1] = {11,12,13,14,15,16,200,18,19,20};
@@ -23,7 +32,7 @@ int main() {
         const auto& value = result[row + 2];
         require(value.text == export_option_key(row) && value.toggle == value.text && value.unique == value.text, "label and native input identify the same row");
         require(value.block == stock[1].block && value.link == stock[1].link, "native row group and help panel retained");
-        require(!value.reserved && !value.jump && !value.context && !value.action && !value.warning, "new rows cannot inherit stock actions/navigation/warnings");
+        require(!value.dependent_action && !value.jump && !value.context && !value.action && !value.warning, "new rows cannot inherit stock actions/navigation/warnings");
     }
     require(compose_export_options(result.data(), static_cast<unsigned>(result.size())).empty(), "reopening/rebuilding cannot double-inject");
     std::array<NativeExportOption, 10> full{}; full[0].toggle = 100;

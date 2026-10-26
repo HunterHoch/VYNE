@@ -1,16 +1,18 @@
-# Native Export menu — VYNE 0.3.0
+# Native Export menu — VYNE 0.3.1
 
 Open `VYNE_Test` and navigate to Rockstar Editor's existing Export screen. VYNE inserts seven rows above the original Export action, using the game's own list, focus, labels, values, disabled-state handling and linked help panel.
 
 | Row | Current behavior |
 | --- | --- |
-| VYNE export | Left/right selects Off or Resolution check. Off retains the stock exporter. |
+| VYNE export | Left/right selects Native export or Resolution check. Native export uses Rockstar's encoder and delivers its finished MP4 to Output location. |
 | VYNE resolution | Cycles 1920×1080, 2560×1440, 3840×2160; saved between sessions. |
-| VYNE frame rate | Disabled until VYNE replay timing is implemented. Stock frame rate remains usable with VYNE Off. |
-| VYNE bitrate | Disabled until VYNE encoding is implemented. Stock bitrate remains usable with VYNE Off. |
+| VYNE frame rate | Disabled until VYNE replay timing is implemented. Stock frame rate remains usable with Native export. |
+| VYNE bitrate | Disabled until VYNE encoding is implemented. Stock bitrate remains usable with Native export. |
 | VYNE file format | Disabled; no unsupported MP4/PNG option is presented as working. |
 | VYNE color profile | Disabled until real color processing/tagging exists. |
-| VYNE project directory | Left/right opens the Windows folder picker on a separate thread; Unicode paths persist. |
+| Output location | Left/right opens the Windows folder picker on a separate thread; Unicode paths persist. Default: Windows Videos/VYNE. |
+
+For a viewable clip, select **Native export**, choose **Output location** with left/right, and press the original **Export** action. VYNE watches the local Rockstar `videos/rendered` directory for a new or changed MP4. It waits for stable metadata, a closed writer and complete MP4 container boxes before copying. Existing destination clips receive numbered filenames; the gallery original is preserved. A `VYNE-last-export.txt` receipt records source and destination. Cancelled exports time out after 30 minutes; a new export replaces the pending watcher. Native output keeps Rockstar's actual resolution and frame rate; selecting VYNE resolution does not upscale native exports.
 
 For the resolution check, set **VYNE export → Resolution check**, choose **3840×2160**, then press the **existing Export action**. VYNE intercepts the native export trigger, queues the selected game mode, checks backbuffer dimensions across three distinct frames, holds for five seconds, and restores the captured mode. F7/focus loss cancels. This deliberately creates no media file; it is the resolution feasibility gate, not a completed export pipeline. The F6 hotkey is disabled by the default installer.
 
@@ -20,4 +22,6 @@ Rows beyond the native 16-row limit are refused. Replacement option storage uses
 
 Independent build3258 mapping from the user's loaded executable: native array RVA `0x201BF98`; 56-byte menu entries and 40-byte options; BuildMenu `0x15EFF8`, AdjustToggle `0x15CC74`, toggle value `0x1811E0`, text wrapper `0xDC05FC`, selectability `0x192B1C`, Export trigger `0x1B6A34`, allocator/free `0x12E0`/`0x1318`. Code fingerprints are checked before detours. Unsupported or conflicting entries leave the native screen untouched. Public REPlus was read as an architectural reference; no source or signature table was imported into production.
 
-Build checks cover unchanged native Export options, action isolation, capacity limits, duplicate insertion, capability gating, Unicode settings persistence, loading and mode-session rollback. They do not prove native menu appearance, controller input, folder-dialog behavior or resolution switching. Those remain user runtime checks.
+Build checks cover unchanged native Export options, action isolation, capacity limits, duplicate insertion, capability gating, Unicode settings persistence, bounded hook retries, loading and mode-session rollback. Output checks reject unfinished/open-writer files and verify Unicode delivery, collision handling and byte preservation, including the user's existing native test MP4. They do not prove native menu appearance, controller input, folder-dialog behavior, game-triggered delivery or resolution switching. Those remain user runtime checks.
+
+The previous build loaded but logged hook activation failure and rolled back. Version 0.3.1 retries MinHook's transient snapshot/allocation failure status within two seconds and logs the exact terminal status. It also corrects option Context/Block/Action field names and offsets after comparing public REPlus row definitions. That comparison did not establish the exact old activation failure, which lacked an error code.
