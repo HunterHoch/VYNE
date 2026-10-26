@@ -21,4 +21,6 @@ bool export_row_enabled(ExportRow row) noexcept;
 unsigned export_width(unsigned index) noexcept;
 unsigned export_height(unsigned index) noexcept;
 void choose_export_directory(HWND owner);
+// Completion is published by the dialog worker and consumed on the editor UI thread.
+bool consume_export_settings_refresh() noexcept;
 }

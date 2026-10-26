@@ -1,5 +1,13 @@
 # VYNE development journal
 
+## 2026-10-26 — Folder completion redraw and compact path (0.3.2)
+
+- User confirmed folder picker and native output delivery to C:\Users\hunte\Downloads\test, but choosing text stayed cached until another native redraw. Subsequent screenshot showed full saved path overlapping the row label. Installed settings and output receipt independently confirm the selected folder and native delivery; menu log confirms seven injected rows and successful hook activation after 19 attempts.
+- Folder worker now publishes a completion redraw request (including cancel/failure). Existing native selectability callback consumes it on the recorded menu UI thread, outside BuildMenu recursion. Local machine-code inspection confirms native focused input calls selectability at RVA 0x1CAE29 using active menu/column/row globals; no new hooks or worker-thread engine UI calls added.
+- Output location value now shows the folder name only, shortened to 12 UTF-16 units without splitting surrogate pairs. Linked help carries the full saved path. Check resolution row is disabled and displays Game settings during Native export; selected 4K check dimensions never implied 4K encoding capability.
+- MSVC /W4 /WX build and loader, rollback, row/settings/capability and output checks pass. User runtime validation of the new deferred redraw remains outstanding. FiveM is running, so 0.3.2 is built but not installed; loaded 0.3.1 remains intact.
+- Actual 4K capture/encoding remains open per canonical specification sections 03/04: verified full-resolution clean scene target, replay timebase, encoder and restoration are required. Do not present native 1080p delivery as this capability.
+
 ## 2026-10-26 — Stock-screen feedback and output delivery (0.3.1)
 
 - User screenshot showed only stock export rows. Installed diagnostics confirmed ASI loading; export-menu.log recorded hook activation failure and rollback, without a precise error status. Native menu integration remains unverified.

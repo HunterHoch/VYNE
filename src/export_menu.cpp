@@ -38,6 +38,7 @@ std::filesystem::path directory;
 std::atomic_int export_index{-1}, description_index{-1};
 std::atomic_uint description_header{0}, description_body{0};
 thread_local int building = -1;
+std::atomic<DWORD> ui_thread{0};
 thread_local std::string value_text;
 std::atomic_bool export_refused{false};
 
@@ -112,6 +113,7 @@ bool inject() {
 }
 
 int build(unsigned index, char branches, unsigned start_column) {
+    ui_thread.store(GetCurrentThreadId());
     static bool observed = false;
     if (!observed) { observed = true; note("native BuildMenu callback reached; first index=" + std::to_string(index)); }
     try { inject(); } catch (...) { OutputDebugStringW(L"VYNE: native menu injection refused.\n"); }
@@ -123,6 +125,15 @@ int build(unsigned index, char branches, unsigned start_column) {
 }
 
 bool selectable(unsigned index, int column, unsigned selected) {
+    // Focused-input processing reaches this on the native editor UI thread.
+    // The dialog worker only publishes completion. Do not rebuild recursively
+    // from BuildMenu's greying pass or from another thread.
+    if (building < 0 && GetCurrentThreadId() == ui_thread.load() && refresh_menu &&
+        static_cast<int>(index) == export_index.load() && focused_row() >= 0 &&
+        vyne::consume_export_settings_refresh()) {
+        try { refresh_menu(-1); note("folder dialog completed: refreshed native Export values"); }
+        catch (...) { OutputDebugStringW(L"VYNE: output-location redraw failed.\n"); }
+    }
     if (static_cast<int>(index) == export_index.load()) {
         if (auto row = option(menu(index), selected)) {
             const auto ours = vyne::export_option_row(row->toggle);
@@ -169,7 +180,7 @@ const char* text(void* self, unsigned hash, const char* debug) {
             if (hash == description_header.load()) return vyne::export_row_label(static_cast<vyne::ExportRow>(row));
             if (hash == description_body.load()) {
                 if (row == static_cast<int>(vyne::ExportRow::directory)) {
-                    value_text = vyne::native_output_status() + " " + vyne::export_row_help(vyne::ExportRow::directory);
+                    value_text = "Output folder: " + vyne::export_settings().output.u8string() + ". " + vyne::native_output_status() + " " + vyne::export_row_help(vyne::ExportRow::directory);
                     return value_text.c_str();
                 }
                 return vyne::export_row_help(static_cast<vyne::ExportRow>(row));

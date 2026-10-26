@@ -1,16 +1,18 @@
-# Native Export menu — VYNE 0.3.1
+# Native Export menu — VYNE 0.3.2
 
 Open `VYNE_Test` and navigate to Rockstar Editor's existing Export screen. VYNE inserts seven rows above the original Export action, using the game's own list, focus, labels, values, disabled-state handling and linked help panel.
 
 | Row | Current behavior |
 | --- | --- |
 | VYNE export | Left/right selects Native export or Resolution check. Native export uses Rockstar's encoder and delivers its finished MP4 to Output location. |
-| VYNE resolution | Cycles 1920×1080, 2560×1440, 3840×2160; saved between sessions. |
+| Check resolution | Enabled only in Resolution check mode; cycles 1920×1080, 2560×1440, 3840×2160. Native export shows Game settings instead. |
 | VYNE frame rate | Disabled until VYNE replay timing is implemented. Stock frame rate remains usable with Native export. |
 | VYNE bitrate | Disabled until VYNE encoding is implemented. Stock bitrate remains usable with Native export. |
 | VYNE file format | Disabled; no unsupported MP4/PNG option is presented as working. |
 | VYNE color profile | Disabled until real color processing/tagging exists. |
-| Output location | Left/right opens the Windows folder picker on a separate thread; Unicode paths persist. Default: Windows Videos/VYNE. |
+| Output location | Shows only the folder name, abbreviated to 12 UTF-16 units without splitting a surrogate pair. Full path appears in linked help. Left/right opens the Windows folder picker; Unicode paths persist. Default: Windows Videos/VYNE. |
+
+When the folder picker closes, it publishes a redraw request. The native selectability callback consumes it during focused input processing on the same thread that builds the editor menu, outside the recursive build/greying pass. This updates the cached Scaleform value without the worker calling engine UI code. Cancel also requests a redraw to clear the choosing state. Runtime confirmation of the new redraw remains pending.
 
 For a viewable clip, select **Native export**, choose **Output location** with left/right, and press the original **Export** action. VYNE watches the local Rockstar `videos/rendered` directory for a new or changed MP4. It waits for stable metadata, a closed writer and complete MP4 container boxes before copying. Existing destination clips receive numbered filenames; the gallery original is preserved. A `VYNE-last-export.txt` receipt records source and destination. Cancelled exports time out after 30 minutes; a new export replaces the pending watcher. Native output keeps Rockstar's actual resolution and frame rate; selecting VYNE resolution does not upscale native exports.
 

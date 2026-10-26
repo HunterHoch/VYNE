@@ -11,6 +11,7 @@ std::mutex lock;
 vyne::ExportSettings settings;
 std::filesystem::path configuration;
 std::atomic_bool picker_open{false};
+std::atomic_bool refresh_pending{false};
 constexpr unsigned widths[] = {1920, 2560, 3840};
 constexpr unsigned heights[] = {1080, 1440, 2160};
 
@@ -60,6 +61,7 @@ DWORD WINAPI folder_thread(void* parameter) {
         CoUninitialize();
     }
     picker_open.store(false);
+    refresh_pending.store(true);
     return 0;
 }
 }
@@ -96,19 +98,20 @@ void vyne::step_export_setting(ExportRow row, int direction) {
     if (!save_locked()) settings = previous;
 }
 bool vyne::export_row_enabled(ExportRow row) noexcept {
-    return row == ExportRow::mode || row == ExportRow::resolution || row == ExportRow::directory;
+    return row == ExportRow::mode || row == ExportRow::directory ||
+        (row == ExportRow::resolution && resolution_check_enabled());
 }
 const char* vyne::export_row_label(ExportRow row) noexcept {
-    constexpr const char* labels[] = {"VYNE export", "VYNE resolution", "VYNE frame rate", "VYNE bitrate", "VYNE file format", "VYNE color profile", "Output location"};
+    constexpr const char* labels[] = {"VYNE export", "Check resolution", "VYNE frame rate", "VYNE bitrate", "VYNE file format", "VYNE color profile", "Output location"};
     const auto i = static_cast<unsigned>(row); return i < 7 ? labels[i] : "VYNE";
 }
 const char* vyne::export_row_help(ExportRow row) noexcept {
     switch (row) {
     case ExportRow::mode: return "Native export uses Rockstar's encoder and copies the finished MP4 to Output location. Resolution check only tests the selected render mode for five seconds and restores; it creates no video.";
-    case ExportRow::resolution: return "Choose the target for VYNE's native Export resolution check. Dimensions must be observed on real GPU buffers before export capture can be enabled.";
+    case ExportRow::resolution: return "Applies only to Resolution check, which creates no video. Native export uses Rockstar's own output dimensions; this control cannot produce a 4K clip. VYNE full-resolution capture is not implemented yet.";
     case ExportRow::directory: return "Press left or right to choose where finished native MP4 exports are copied. The Video Gallery original is preserved. The Windows folder picker runs separately from the render thread.";
-    case ExportRow::fps: return "VYNE replay timing is not implemented yet. Use the stock frame-rate control when VYNE export is Off.";
-    case ExportRow::bitrate: return "VYNE encoding is not implemented yet. Use the stock bitrate control when VYNE export is Off.";
+    case ExportRow::fps: return "VYNE replay timing is not implemented yet. Use the stock frame-rate control with Native export.";
+    case ExportRow::bitrate: return "VYNE encoding is not implemented yet. Use the stock bitrate control with Native export.";
     case ExportRow::format: return "MP4/H.264 and PNG sequence backends are not implemented yet. This option stays disabled until real output is available.";
     default: return "VYNE color conversion and output tagging are not implemented yet. No unsupported color profile is advertised.";
     }
@@ -117,11 +120,21 @@ std::string vyne::export_row_value(ExportRow row) {
     const auto value = export_settings();
     switch (row) {
     case ExportRow::mode: return value.resolution_check ? "Resolution check" : "Native export";
-    case ExportRow::resolution: return std::to_string(export_width(value.resolution)) + " x " + std::to_string(export_height(value.resolution));
+    case ExportRow::resolution: return value.resolution_check ? std::to_string(export_width(value.resolution)) + " x " + std::to_string(export_height(value.resolution)) : "Game settings";
     case ExportRow::directory: {
         if (picker_open.load()) return "Choosing folder...";
-        auto path = value.output.u8string();
-        return path.size() > 64 ? ".../" + value.output.filename().u8string() : path;
+        auto name = value.output.lexically_normal().filename().wstring();
+        if (name.empty()) name = value.output.parent_path().filename().wstring();
+        if (name.empty()) name = value.output.root_path().wstring();
+        if (name.empty()) return "Choose folder";
+        // Keep the native value column short; full path lives in linked help.
+        // Do not split a UTF-16 surrogate pair when abbreviating folder names.
+        if (name.size() > 12) {
+            size_t keep = 11;
+            if (name[keep - 1] >= 0xd800 && name[keep - 1] <= 0xdbff) --keep;
+            name.resize(keep); name += L"\x2026";
+        }
+        return std::filesystem::path(name).u8string();
     }
     default: return "Not available yet";
     }
@@ -129,5 +142,7 @@ std::string vyne::export_row_value(ExportRow row) {
 void vyne::choose_export_directory(HWND owner) {
     if (picker_open.exchange(true)) return;
     const auto thread = CreateThread(nullptr, 0, folder_thread, owner, 0, nullptr);
-    if (thread) CloseHandle(thread); else picker_open.store(false);
+    if (thread) CloseHandle(thread);
+    else { picker_open.store(false); refresh_pending.store(true); }
 }
+bool vyne::consume_export_settings_refresh() noexcept { return refresh_pending.exchange(false); }

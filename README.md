@@ -6,6 +6,8 @@ Phase 1 modernizes the existing export screen: true temporary render resolution 
 
 ## Current state
 
+Version 0.3.2 adds deferred folder-picker completion redraws, a compact folder-name value with the full path in linked help, and disables check dimensions in Native export mode. This build awaits installation while FiveM is running.
+
 Original Windows x64 diagnostic ASI. Automatic loading in FiveM build 3258 is confirmed by the installed plugin's diagnostic log. FiveM uses LoadLibrary and requires an `FX_ASI_BUILD` resource; initialization therefore runs on a short worker after the loader lock is released. The current resource declares build 3258 only.
 
 Version 0.3.1 targets the native Export menu. See [native menu controls](docs/native-export-menu.md). **Output location** opens a folder picker; **VYNE export → Native export** uses Rockstar's encoder and copies its finished MP4 to that folder, preserving the gallery original. **Resolution check** instead tests the selected mode and restoration without creating media. Custom capture, replay cadence, encoding and audio remain unfinished. The user owns in-game testing; do not drive the game or run runtime experiments unless requested.

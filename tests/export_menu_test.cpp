@@ -38,7 +38,7 @@ int main() {
     std::array<NativeExportOption, 10> full{}; full[0].toggle = 100;
     require(compose_export_options(full.data(), 10).empty(), "reject menu overflow before allocation/mutation");
     require(compose_export_options(nullptr, 1).empty(), "invalid native array refused");
-    require(export_row_enabled(ExportRow::mode) && export_row_enabled(ExportRow::resolution) && export_row_enabled(ExportRow::directory), "implemented controls enabled");
+    require(export_row_enabled(ExportRow::mode) && !export_row_enabled(ExportRow::resolution) && export_row_enabled(ExportRow::directory), "native export cannot advertise custom resolution as functional");
     require(!export_row_enabled(ExportRow::format) && !export_row_enabled(ExportRow::color), "unimplemented formats/color cannot be offered as working");
     const auto directory = std::filesystem::absolute("build") / (L"settings-test-" + std::to_wstring(GetCurrentProcessId()));
     std::filesystem::create_directories(directory);
@@ -46,11 +46,14 @@ int main() {
     std::ofstream file(directory / L"Export.ini", std::ios::binary);
     file.write(reinterpret_cast<const char*>(seed.data()), static_cast<std::streamsize>(seed.size() * sizeof(wchar_t))); file.close();
     initialize_export_settings(directory);
+    require(!export_row_enabled(ExportRow::resolution) && export_row_value(ExportRow::resolution) == "Game settings", "native resolution value does not falsely promise 4K");
     require(export_settings().resolution == 2, "invalid stored resolution normalized");
     require(export_settings().output == std::filesystem::path(L"D:\\VYNE test é\\影像"), "Unicode output path survives Windows INI loading");
+    require(export_row_value(ExportRow::directory) == std::filesystem::path(L"影像").u8string(), "row shows short folder name instead of overlapping full path");
     step_export_setting(ExportRow::mode, 1); step_export_setting(ExportRow::resolution, 1);
     initialize_export_settings(directory);
     require(export_settings().resolution_check && export_settings().resolution == 0, "menu settings persist and reload through the Windows profile API");
+    require(export_row_enabled(ExportRow::resolution) && export_row_value(ExportRow::resolution) == "1920 x 1080", "check dimensions are selectable only in resolution-check mode");
     require(export_settings().output == std::filesystem::path(L"D:\\VYNE test é\\影像"), "atomic settings updates preserve Unicode path");
     std::cout << "PASS: native row layout, unchanged Export, no inherited actions, row limits, capability gating and Unicode persistence.\n";
 }
