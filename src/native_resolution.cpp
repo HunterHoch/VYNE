@@ -243,11 +243,14 @@ bool vyne::install_native_resolution(std::uintptr_t base, IDXGISwapChain* chain,
         !matches(base + 0x1395b7c, "\x3b\xf8\x7e\x13", 4) ||
         !matches(base + 0x1395b93, "\x3b\xf1\x7e\x15", 4)) return false;
     ComPtr<ID3D11Device> device;
+    note("graphics setup: GetDevice");
     if (FAILED(chain->GetDevice(IID_PPV_ARGS(&device)))) return false;
+    note("graphics setup: GetImmediateContext");
     ComPtr<ID3D11DeviceContext> context; device->GetImmediateContext(context.GetAddressOf());
     const auto device_table = *reinterpret_cast<void***>(device.Get());
     const auto context_table = *reinterpret_cast<void***>(context.Get());
     const auto media = LoadLibraryW(L"mfreadwrite.dll");
+    note("graphics setup: Media Foundation library acquired");
     const auto create_media_writer = media ? reinterpret_cast<void*>(GetProcAddress(media, "MFCreateSinkWriterFromURL")) : nullptr;
     if (!create_media_writer) return false;
     struct Hook { void* target; void* replacement; void** original; };
@@ -261,6 +264,7 @@ bool vyne::install_native_resolution(std::uintptr_t base, IDXGISwapChain* chain,
         {reinterpret_cast<void*>(base + 0x1395a74), reinterpret_cast<void*>(&fit_window), reinterpret_cast<void**>(&original_fit_window)}
     }};
     unsigned created = 0;
+    note("graphics setup: creating hook batch");
     for (; created < hooks.size(); ++created) {
         const auto result = MH_CreateHook(hooks[created].target, hooks[created].replacement, hooks[created].original);
         if (result != MH_OK) { note("hook creation failed index=" + std::to_string(created) + " " + MH_StatusToString(result)); break; }
@@ -270,6 +274,7 @@ bool vyne::install_native_resolution(std::uintptr_t base, IDXGISwapChain* chain,
         for (const auto& hook : hooks) if (MH_QueueEnableHook(hook.target) != MH_OK) queued = false;
         unsigned attempts = 0;
         if (queued) {
+            note("graphics setup: enabling hook batch");
             const auto result = retry_hook_snapshot([] { return MH_ApplyQueued(); }, [](unsigned delay) { Sleep(delay); }, attempts);
             if (result == MH_OK) {
                 installed.store(true); note("selected-resolution export hooks enabled; 1080p clamp is overridden only inside a VYNE session"); return true;

@@ -36,6 +36,7 @@ int* active_column = nullptr;
 int* selected_items = nullptr;
 int* column_menus = nullptr;
 std::filesystem::path directory;
+HMODULE plugin_module = nullptr;
 std::atomic_int export_index{-1}, description_index{-1};
 std::atomic_uint description_header{0}, description_body{0};
 thread_local int building = -1;
@@ -123,6 +124,8 @@ int build(unsigned index, char branches, unsigned start_column) {
     building = static_cast<int>(index);
     const auto result = original_build(index, branches, start_column);
     building = previous;
+    if (previous < 0 && static_cast<int>(index) == export_index.load())
+        vyne::request_native_mode_probe(plugin_module);
     return result;
 }
 
@@ -249,6 +252,7 @@ bool matches(uintptr_t base, uintptr_t rva, const char* bytes, size_t size) {
 
 void vyne::install_export_menu(HMODULE module) noexcept {
     try {
+        plugin_module = module;
         wchar_t host[32768]{}; GetModuleFileNameW(nullptr, host, 32768);
         if (std::filesystem::path(host).filename() != L"FiveM_b3258_GTAProcess.exe") return;
         wchar_t path[32768]{}; if (!GetModuleFileNameW(module, path, 32768)) return;

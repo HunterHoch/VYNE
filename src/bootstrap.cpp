@@ -45,7 +45,7 @@ BOOL CALLBACK diagnose(PINIT_ONCE, PVOID, PVOID*) noexcept {
         if (!log) return FALSE;
         SYSTEMTIME time{};
         GetSystemTime(&time);
-        log << L"VYNE 0.4.1 diagnostics UTC " << time.wYear << L'-' << time.wMonth
+        log << L"VYNE 0.4.2 diagnostics UTC " << time.wYear << L'-' << time.wMonth
             << L'-' << time.wDay << L' ' << time.wHour << L':' << time.wMinute << L':' << time.wSecond
             << L"\npid=" << GetCurrentProcessId() << L"\nplugin=" << own_path << L"\n";
         const auto host = module_path(nullptr);
@@ -86,7 +86,9 @@ DWORD WINAPI startup(void*) {
         reinterpret_cast<LPCWSTR>(&startup), &reference)) return 1;
     VYNE_RunDiagnostics();
     vyne::install_export_menu(plugin_module);
-    vyne::start_native_mode_probe(plugin_module);
+    // Graphics objects can exist while FiveM is still constructing them.
+    // The native Export menu schedules graphics setup after its first build;
+    // never touch the swapchain/device or install graphics hooks at startup.
     FreeLibraryAndExitThread(reference, 0);
 }
 }

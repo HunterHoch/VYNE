@@ -6,6 +6,8 @@ Phase 1 modernizes the existing export screen: true temporary render resolution 
 
 ## Current state
 
+User reported 0.4.1 freezing FiveM at launch. The installed ASI has been quarantined outside the plugins folder; VYNE is currently disabled. Version 0.4.2 defers graphics-device access and hook setup until the native Export menu has completed its first build, and adds initialization-stage logging. It is built locally and deliberately remains uninstalled. Exact hang mechanism and runtime recovery remain unverified.
+
 Version 0.4.1 corrects the additional monitor-size clamp in the temporary window-mode path and adds live wait/cancellation diagnostics. Built, locally checked and installed after the user closed FiveM. GTA 4K output remains unverified.
 
 Version 0.4.0 adds **Render export**: selected game mode, session-scoped bypass of GTA's native 1080p clamp, GPU/encoder dimension checks and restoration around the native bake pipeline. See [resolution export](docs/resolution-export.md). Native audio, timing and presentation remain engine-owned. Windows H.264 encoding at 3840×2160 passes locally; actual GTA 4K export and restoration still require the user's test. The compact folder display and completion redraw fix are included.

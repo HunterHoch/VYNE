@@ -1,5 +1,12 @@
 # VYNE development journal
 
+## 2026-10-26 — Startup hang report; ASI quarantined (0.4.2 local mitigation)
+
+- User reports FiveM becomes unresponsive immediately at launch with0.4.1. Moved only installed VYNE.asi to build/quarantine/VYNE-0.4.1-20261026-135924-967.asi.disabled. Verified no VYNE.asi remains in plugins. No game process was running at inspection; no process killed, no game launched, unrelated plugins/settings preserved.
+- Latest diagnostics identify0.4.1 PID9072. Menu hook activation completed, but there is no subsequent graphics hook batch/armed event. CitizenFX log ends after initial backbuffer creation. This narrows the hang to the startup interval but does NOT establish a particular lock or exact blocked function. Earlier0.4.0 restart also lacks a later graphics-armed event; do not assume the new window-fit hook alone caused it.
+- Changed0.4.2 so startup installs only the menu hooks; the first completed native Export menu build requests one deferred graphics worker. No swapchain/device calls or graphics detours occur automatically at game startup. Validate swapchain/vtable/Present owner before selected-resolution hook setup, and log binding/GetDevice/GetImmediateContext/MediaFoundation/hook-batch stages. This is a startup-risk mitigation, not a proven root-cause fix.
+- Local warnings-as-errors build and loader/graphics rollback/row settings/output/real Windows4K encoder checks passed. No runtime launch or in-game validation performed. 0.4.2 remains UNINSTALLED and VYNE disabled; do not automatically replace the quarantined build or claim FiveM recovery confirmed. Next user can launch without VYNE; subsequent opt-in editor test must distinguish startup recovery from graphics initialization and actual4K export.
+
 ## 2026-10-26 — Export waiting at mode switch (0.4.1)
 
 - User reports Export does not start. Installed logs show two selected-resolution requests from2560x1440 to3840x2160, no GPU-ready event, then cancellation/restoration roughly7-8seconds later. No encoder callback ran. FiveM logs record mode request success but no corresponding backbuffer rebuild. Do not attribute this to encoder failure or claim4K mode switched.

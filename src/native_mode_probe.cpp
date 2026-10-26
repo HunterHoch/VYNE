@@ -252,6 +252,7 @@ void vyne::start_native_mode_probe(HMODULE module) noexcept {
         wchar_t path[32768]{};
         if (!GetModuleFileNameW(module, path, 32768)) return;
         directory = std::filesystem::path(path).parent_path() / L"VYNE";
+        note("graphics initialization requested after native Export menu build");
         hotkeys_enabled = GetPrivateProfileIntW(L"Diagnostics", L"EnableModeProbe", 0, (directory / L"VYNE.ini").c_str()) == 1;
         const bool menu_enabled = GetPrivateProfileIntW(L"Diagnostics", L"EnableExportMenu", 1, (directory / L"VYNE.ini").c_str()) == 1;
         if (!hotkeys_enabled && !menu_enabled) return;
@@ -272,13 +273,11 @@ void vyne::start_native_mode_probe(HMODULE module) noexcept {
             Sleep(500);
         }
         if (!bound) { note("refused: current-build signatures/swapchain unavailable"); return; }
+        note("graphics initialization: bound current swapchain; validating Present owner");
         // Pin before publishing a callback; this opt-in probe lives until exit.
         HMODULE pinned = nullptr;
         if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
             reinterpret_cast<LPCWSTR>(&on_present), &pinned)) return;
-        if (!install_native_resolution(base, game_chain, directory)) {
-            note("selected-resolution export unavailable: native resolution guards/hooks failed; resolution check remains available");
-        }
         if (!readable(game_chain, sizeof(void*))) { note("refused: invalid swapchain object"); return; }
         const auto table = *reinterpret_cast<void***>(game_chain);
         if (!readable(table, 18 * sizeof(void*))) { note("refused: invalid swapchain vtable"); return; }
@@ -289,6 +288,10 @@ void vyne::start_native_mode_probe(HMODULE module) noexcept {
             (method_owner != GetModuleHandleW(L"dxgi.dll") && method_owner != GetModuleHandleW(L"rage-graphics-five.dll"))) {
             note("refused: unrecognized swapchain Present owner"); return;
         }
+        note("graphics initialization: installing selected-resolution hooks");
+        if (!install_native_resolution(base, game_chain, directory)) {
+            note("selected-resolution export unavailable: native resolution guards/hooks failed; resolution check remains available");
+        }
         original_present.store(reinterpret_cast<Present>(original));
         DWORD old_protection{};
         if (!VirtualProtect(slot, sizeof(void*), PAGE_READWRITE, &old_protection)) return;
@@ -298,6 +301,20 @@ void vyne::start_native_mode_probe(HMODULE module) noexcept {
         probe_ready.store(true); probe_phase.store(1);
         note("armed: native VYNE menu can request a resolution check; F7 or focus loss cancels; legacy F6=" + std::to_string(hotkeys_enabled));
     } catch (...) { OutputDebugStringW(L"VYNE: optional mode probe initialization failed.\n"); }
+}
+
+namespace {
+std::atomic_bool graphics_start_requested{false};
+DWORD WINAPI graphics_worker(void* module) {
+    vyne::start_native_mode_probe(static_cast<HMODULE>(module));
+    return 0;
+}
+}
+void vyne::request_native_mode_probe(HMODULE module) noexcept {
+    if (graphics_start_requested.exchange(true)) return;
+    const auto thread = CreateThread(nullptr, 0, graphics_worker, module, 0, nullptr);
+    if (thread) CloseHandle(thread);
+    else graphics_start_requested.store(false);
 }
 
 namespace {

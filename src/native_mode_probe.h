@@ -3,6 +3,7 @@
 #include <string>
 namespace vyne {
 void start_native_mode_probe(HMODULE module) noexcept;
+void request_native_mode_probe(HMODULE module) noexcept;
 bool queue_resolution_check(unsigned width, unsigned height) noexcept;
 bool queue_resolution_export(unsigned width, unsigned height) noexcept;
 bool resolution_export_ready() noexcept;
