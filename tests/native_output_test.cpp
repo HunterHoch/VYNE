@@ -46,6 +46,8 @@ int wmain(int argc, wchar_t** argv) {
         const auto actual = std::filesystem::path(argv[1]);
         require(vyne::copy_native_mp4(actual, destination, delivered), "real native export delivered");
         require(bytes(actual) == bytes(delivered), "real native export preserved exactly");
+        require(!vyne::copy_native_mp4(actual, destination, delivered, 3840, 2160), "1080p fixture cannot be delivered as a 4K export");
+        require(vyne::copy_native_mp4(actual, destination, delivered, 1920, 1080), "matching native dimensions accepted from MP4 track header");
     }
     std::cout << "PASS: unfinished/writing-file rejection, finalized output delivery, Unicode folder and collision-safe byte preservation.\n";
 }

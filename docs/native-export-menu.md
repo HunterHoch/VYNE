@@ -1,16 +1,18 @@
-# Native Export menu — VYNE 0.3.2
+# Native Export menu — VYNE 0.4.0
 
 Open `VYNE_Test` and navigate to Rockstar Editor's existing Export screen. VYNE inserts seven rows above the original Export action, using the game's own list, focus, labels, values, disabled-state handling and linked help panel.
 
 | Row | Current behavior |
 | --- | --- |
-| VYNE export | Left/right selects Native export or Resolution check. Native export uses Rockstar's encoder and delivers its finished MP4 to Output location. |
-| Check resolution | Enabled only in Resolution check mode; cycles 1920×1080, 2560×1440, 3840×2160. Native export shows Game settings instead. |
+| VYNE export | Cycles Native export, Render export and Resolution check. Render export uses the selected dimensions with native audio/timing. |
+| VYNE resolution | Enabled in Render export or Resolution check; cycles 1920×1080, 2560×1440, 3840×2160. Native export shows Game settings. |
 | VYNE frame rate | Disabled until VYNE replay timing is implemented. Stock frame rate remains usable with Native export. |
 | VYNE bitrate | Disabled until VYNE encoding is implemented. Stock bitrate remains usable with Native export. |
 | VYNE file format | Disabled; no unsupported MP4/PNG option is presented as working. |
 | VYNE color profile | Disabled until real color processing/tagging exists. |
 | Output location | Shows only the folder name, abbreviated to 12 UTF-16 units without splitting a surrogate pair. Full path appears in linked help. Left/right opens the Windows folder picker; Unicode paths persist. Default: Windows Videos/VYNE. |
+
+For selected 4K output, choose **Render export**, set **VYNE resolution → 3840 x 2160**, and press the existing **Export** action. Stock Frame Rate and Bit Rate also configure Render export. See [resolution export](resolution-export.md) for behavior, evidence and runtime limits.
 
 When the folder picker closes, it publishes a redraw request. The native selectability callback consumes it during focused input processing on the same thread that builds the editor menu, outside the recursive build/greying pass. This updates the cached Scaleform value without the worker calling engine UI code. Cancel also requests a redraw to clear the choosing state. Runtime confirmation of the new redraw remains pending.
 

@@ -1,5 +1,6 @@
 #include "native_mode_probe.h"
 #include "graphics_mode.h"
+#include "native_resolution.h"
 #include <d3d11.h>
 #include <dxgi.h>
 #include <atomic>
@@ -23,6 +24,14 @@ bool hotkeys_enabled = false;
 std::atomic_bool probe_ready{false}, probe_busy{false};
 std::atomic<std::uint64_t> queued_dimensions{0};
 std::atomic_int probe_phase{0};
+std::atomic_bool export_mode{false}, export_started{false}, export_failed{false};
+std::atomic_int export_result{0};
+std::atomic<std::uint64_t> export_dimensions{0};
+std::uint64_t export_deadline = 0;
+std::uint64_t finalize_deadline = 0;
+bool* playback_active = nullptr;
+int* playback_type = nullptr;
+bool* delayed_close = nullptr;
 
 void note(const std::string& message) {
     std::ofstream log(directory / L"mode-probe.log", std::ios::app);
@@ -116,30 +125,73 @@ void probe_tick() {
     key_down = pressed;
     if (!session) return;
     const auto prior = session->status();
-    if ((GetAsyncKeyState(VK_F7) & 0x8000) || !foreground) session->cancel(now);
-    session->tick(now);
+    const bool exporting = export_mode.load();
+    const bool running = export_started.load();
+    bool cancel = (GetAsyncKeyState(VK_F7) & 0x8000) ||
+        (!foreground && !running) || (exporting && export_failed.load());
+    if (exporting && cancel) export_failed.store(true);
+    bool native_bake_running = false;
+    if (exporting && running) {
+        if (!export_deadline) export_deadline = now + 30ull * 60 * 1000;
+        const bool baking = readable(playback_active, 1) && *playback_active &&
+            readable(playback_type, 4) && *playback_type == 1;
+        native_bake_running = baking;
+        if (baking) {
+            vyne::RenderDimensions measured{};
+            const auto expected = export_dimensions.load();
+            if (!dimensions(nullptr, measured) || measured.width != static_cast<unsigned>(expected >> 32) ||
+                measured.height != static_cast<unsigned>(expected)) {
+                export_failed.store(true); cancel = true;
+            }
+        }
+        if (!baking) {
+            if (!finalize_deadline) finalize_deadline = now + 30000;
+            const auto encoder = vyne::resolution_encoder_result();
+            if (encoder || export_failed.load() || now >= finalize_deadline) {
+                if (!vyne::resolution_gpu_verified() || encoder != 1) export_failed.store(true);
+                vyne::reset_resolution_gpu_observation();
+                session->finish(now);
+            }
+        } else if (cancel || (export_deadline && now >= export_deadline)) {
+            export_failed.store(true);
+            // Native Update owns teardown. Do not Close playback inside Present.
+            if (readable(delayed_close, 1)) *delayed_close = true;
+            probe_phase.store(8);
+        }
+    } else if (cancel) session->cancel(now);
+    // Resource reset must wait for native playback teardown. In particular,
+    // the generic session's ready-state drift handler would otherwise restore
+    // while GTA still owns active encoder/capture resources.
+    if (!native_bake_running) session->tick(now);
     if (session->status() == vyne::ModeStatus::ready && !restore_at) {
-        restore_at = now + 5000;
+        restore_at = now + (exporting ? 30000 : 5000);
         vyne::RenderDimensions measured{}; dimensions(nullptr, measured);
-        probe_phase.store(3);
-        note("measured_backbuffer=" + std::to_string(measured.width) + "x" + std::to_string(measured.height) + " stable_frames=3 scene_target=UNVERIFIED restore_in_ms=5000");
+        probe_phase.store(exporting ? 6 : 3);
+        note("measured_backbuffer=" + std::to_string(measured.width) + "x" + std::to_string(measured.height) +
+            (exporting ? " stable_frames=3 waiting_for_native_export_on_UI_thread" : " stable_frames=3 scene_target=UNVERIFIED restore_in_ms=5000"));
     }
-    if (restore_at && now >= restore_at) session->finish(now);
+    if (restore_at && now >= restore_at && !export_started.load()) session->finish(now);
     if (session->status() == vyne::ModeStatus::restoring) probe_phase.store(4);
     if (session->status() != prior) note("state=" + std::to_string(static_cast<int>(session->status())) + " " + session->error());
     if (session->status() == vyne::ModeStatus::restored) {
-        note("restore_verified=original_queue_and_backbuffer (not a completed export)");
+        if (exporting) export_result.store(export_started.load() && !export_failed.load() && vyne::resolution_gpu_verified() ? 1 : -1);
+        note(exporting ? "export_session_restore_verified=original_queue_and_backbuffer" : "restore_verified=original_queue_and_backbuffer (not a completed export)");
         std::ofstream recovery(directory / L"mode-recovery.txt", std::ios::trunc);
         recovery << "restored\n";
         session.reset(); restore_at = 0;
         probe_phase.store(5); probe_busy.store(false);
+        export_mode.store(false); export_started.store(false); export_dimensions.store(0);
+        export_deadline = 0; finalize_deadline = 0; vyne::reset_resolution_gpu_observation();
     } else if (session->status() == vyne::ModeStatus::restore_failed) {
+        if (exporting) export_result.store(-1);
         // Keep the session and recovery record. Never silently re-arm after
         // failure; user must inspect settings and restart the diagnostic.
         restore_at = 0;
         probe_phase.store(-2);
     } else if (session->status() == vyne::ModeStatus::failed) {
+        if (exporting) export_result.store(-1);
         note(session->error()); session.reset(); probe_phase.store(-1); probe_busy.store(false);
+        export_mode.store(false); export_dimensions.store(0); export_started.store(false);
     }
 }
 
@@ -167,6 +219,12 @@ bool bind_build3258(uintptr_t base) {
     if (!readable(requested_mode, 24)) return false;
     game_chain = *chain_slot;
     change_mode = reinterpret_cast<ChangeMode>(base + 0x13a01c0);
+    const unsigned char playback_guard[] = {0xc6,0x05,0x02,0xf3,0xe7,0x01,0x01,0x89,0x0d,0xd2,0xf2,0xe7,0x01};
+    if (!readable(reinterpret_cast<void*>(base + 0x198f05), sizeof(playback_guard)) ||
+        std::memcmp(reinterpret_cast<void*>(base + 0x198f05), playback_guard, sizeof(playback_guard))) return false;
+    playback_active = reinterpret_cast<bool*>(base + 0x201820e);
+    playback_type = reinterpret_cast<int*>(base + 0x20181e4);
+    delayed_close = reinterpret_cast<bool*>(base + 0x201820f);
     return true;
 }
 }
@@ -200,6 +258,9 @@ void vyne::start_native_mode_probe(HMODULE module) noexcept {
         HMODULE pinned = nullptr;
         if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
             reinterpret_cast<LPCWSTR>(&on_present), &pinned)) return;
+        if (!install_native_resolution(base, game_chain, directory)) {
+            note("selected-resolution export unavailable: native resolution guards/hooks failed; resolution check remains available");
+        }
         if (!readable(game_chain, sizeof(void*))) { note("refused: invalid swapchain object"); return; }
         const auto table = *reinterpret_cast<void***>(game_chain);
         if (!readable(table, 18 * sizeof(void*))) { note("refused: invalid swapchain vtable"); return; }
@@ -221,15 +282,48 @@ void vyne::start_native_mode_probe(HMODULE module) noexcept {
     } catch (...) { OutputDebugStringW(L"VYNE: optional mode probe initialization failed.\n"); }
 }
 
-bool vyne::queue_resolution_check(unsigned width, unsigned height) noexcept {
+namespace {
+bool queue_mode(unsigned width, unsigned height, bool exporting) noexcept {
     if (!probe_ready.load() || probe_busy.exchange(true)) return false;
     if (!((width == 1920 && height == 1080) || (width == 2560 && height == 1440) || (width == 3840 && height == 2160))) {
         probe_busy.store(false); return false;
     }
-    queued_dimensions.store((static_cast<std::uint64_t>(width) << 32) | height);
+    export_dimensions.store(exporting ? (static_cast<std::uint64_t>(width) << 32) | height : 0);
+    export_mode.store(exporting); export_started.store(false); export_failed.store(false);
+    export_result.store(0);
+    if (exporting) vyne::begin_resolution_gpu_observation();
     probe_phase.store(2);
+    queued_dimensions.store((static_cast<std::uint64_t>(width) << 32) | height);
     return true;
 }
+}
+bool vyne::queue_resolution_check(unsigned width, unsigned height) noexcept { return queue_mode(width, height, false); }
+bool vyne::queue_resolution_export(unsigned width, unsigned height) noexcept {
+    return native_resolution_available() && queue_mode(width, height, true);
+}
+bool vyne::resolution_export_ready() noexcept { return export_mode.load() && probe_phase.load() == 6 && !export_started.load(); }
+bool vyne::claim_resolution_export() noexcept {
+    if (!export_mode.load() || export_failed.load()) return false;
+    int expected = 6;
+    return probe_phase.compare_exchange_strong(expected, 9);
+}
+bool vyne::resolution_export_started() noexcept {
+    if (!export_mode.load() || probe_phase.load() != 9 || export_failed.load()) return false;
+    // Called after native TriggerExport on its owning UI thread.
+    if (!readable(playback_active, 1) || !*playback_active || !readable(playback_type, 4) || *playback_type != 1) {
+        export_failed.store(true); return false;
+    }
+    export_started.store(true); probe_phase.store(7);
+    return true;
+}
+bool vyne::resolution_export_dimensions(unsigned& width, unsigned& height) noexcept {
+    if (!export_mode.load() || !probe_busy.load() || probe_phase.load() < 6 || export_failed.load()) return false;
+    const auto packed = export_dimensions.load();
+    width = static_cast<unsigned>(packed >> 32); height = static_cast<unsigned>(packed);
+    return width && height;
+}
+void vyne::fail_resolution_export() noexcept { export_failed.store(true); }
+int vyne::resolution_export_result() noexcept { return export_result.load(); }
 bool vyne::resolution_check_busy() noexcept { return probe_busy.load(); }
 const char* vyne::resolution_check_status() noexcept {
     switch (probe_phase.load()) {
@@ -238,6 +332,10 @@ const char* vyne::resolution_check_status() noexcept {
     case 3: return "Target reached; restoring shortly";
     case 4: return "Restoring original resolution";
     case 5: return "Original resolution restored";
+    case 6: return "Resolution ready; starting native export";
+    case 7: return "Exporting at selected resolution";
+    case 8: return "Closing native export before restoring resolution";
+    case 9: return "Starting native export";
     case -1: return "Resolution check refused; see mode-probe.log";
     case -2: return "Restore failed; inspect recovery record";
     default: return "Resolution backend unavailable; see mode-probe.log";

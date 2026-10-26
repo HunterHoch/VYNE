@@ -7,6 +7,7 @@ namespace vyne {
 enum class ExportRow : unsigned { mode, resolution, fps, bitrate, format, color, directory, count };
 struct ExportSettings {
     bool resolution_check = false;
+    bool resolution_export = false;
     unsigned resolution = 2;
     std::filesystem::path output;
 };

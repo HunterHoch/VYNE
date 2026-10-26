@@ -4,6 +4,7 @@
 #include "native_mode_probe.h"
 #include "hook_retry.h"
 #include "native_output.h"
+#include "native_resolution.h"
 #include <MinHook.h>
 #include <filesystem>
 #include <fstream>
@@ -41,6 +42,7 @@ thread_local int building = -1;
 std::atomic<DWORD> ui_thread{0};
 thread_local std::string value_text;
 std::atomic_bool export_refused{false};
+std::filesystem::path pending_output;
 
 bool readable(const void* pointer, size_t size) noexcept {
     MEMORY_BASIC_INFORMATION info{};
@@ -125,6 +127,21 @@ int build(unsigned index, char branches, unsigned start_column) {
 }
 
 bool selectable(unsigned index, int column, unsigned selected) {
+    if (building < 0 && GetCurrentThreadId() == ui_thread.load() &&
+        static_cast<int>(index) == export_index.load() && vyne::claim_resolution_export()) {
+        // Only this UI-thread callback can enter native TriggerExport. Present
+        // publishes readiness after the selected mode stabilizes.
+        unsigned width = 0, height = 0;
+        if (vyne::resolution_export_dimensions(width, height)) {
+            try {
+                vyne::watch_native_export(pending_output, width, height, &vyne::resolution_export_result);
+                original_trigger();
+                if (!vyne::resolution_export_started()) vyne::fail_resolution_export();
+                note("selected-resolution native Export dispatched on editor UI thread");
+            } catch (...) { vyne::fail_resolution_export(); }
+        }
+        return false;
+    }
     // Focused-input processing reaches this on the native editor UI thread.
     // The dialog worker only publishes completion. Do not rebuild recursively
     // from BuildMenu's greying pass or from another thread.
@@ -185,7 +202,7 @@ const char* text(void* self, unsigned hash, const char* debug) {
                 }
                 return vyne::export_row_help(static_cast<vyne::ExportRow>(row));
             }
-        } else if (hash == description_body.load() && vyne::resolution_check_enabled()) {
+        } else if (hash == description_body.load() && (vyne::resolution_check_enabled() || vyne::export_settings().resolution_export)) {
             return export_refused.load() ? "VYNE could not start the resolution check. See mode-probe.log; native export was not started." : vyne::resolution_check_status();
         }
     }
@@ -195,6 +212,14 @@ const char* text(void* self, unsigned hash, const char* debug) {
 void trigger_export() {
     try {
     const auto settings = vyne::export_settings();
+    if (settings.resolution_export) {
+        pending_output = settings.output;
+        const bool queued = vyne::queue_resolution_export(vyne::export_width(settings.resolution), vyne::export_height(settings.resolution));
+        export_refused.store(!queued);
+        note(queued ? "Export: queued selected-resolution native bake after GPU mode stabilization" : "Export refused: selected-resolution backend unavailable/busy");
+        if (refresh_menu) refresh_menu(-1);
+        return;
+    }
     if (!settings.resolution_check) {
         try { vyne::watch_native_export(settings.output); }
         catch (...) { OutputDebugStringW(L"VYNE: output watch unavailable; native exporter remains available.\n"); }

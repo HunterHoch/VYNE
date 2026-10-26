@@ -17,6 +17,7 @@ constexpr unsigned heights[] = {1080, 1440, 2160};
 
 bool save_locked() {
     const auto content = L"\xfeff[Export]\r\nResolutionCheck=" + std::to_wstring(settings.resolution_check ? 1 : 0) +
+        L"\r\nResolutionExport=" + std::to_wstring(settings.resolution_export ? 1 : 0) +
         L"\r\nResolution=" + std::to_wstring(settings.resolution) + L"\r\nDirectory=" + settings.output.wstring() + L"\r\n";
     auto temporary = configuration; temporary += L".tmp";
     const auto file = CreateFileW(temporary.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -71,6 +72,7 @@ void vyne::initialize_export_settings(const std::filesystem::path& directory) {
     std::filesystem::create_directories(directory);
     configuration = directory / L"Export.ini";
     settings.resolution_check = GetPrivateProfileIntW(L"Export", L"ResolutionCheck", 0, configuration.c_str()) == 1;
+    settings.resolution_export = !settings.resolution_check && GetPrivateProfileIntW(L"Export", L"ResolutionExport", 1, configuration.c_str()) == 1;
     settings.resolution = GetPrivateProfileIntW(L"Export", L"Resolution", 2, configuration.c_str());
     if (settings.resolution >= 3) settings.resolution = 2;
     std::vector<wchar_t> path(32768);
@@ -93,25 +95,29 @@ void vyne::step_export_setting(ExportRow row, int direction) {
     if (!direction) return;
     std::lock_guard guard(lock);
     const auto previous = settings;
-    if (row == ExportRow::mode) settings.resolution_check = !settings.resolution_check;
+    if (row == ExportRow::mode) {
+        const unsigned mode = settings.resolution_check ? 2 : settings.resolution_export ? 1 : 0;
+        const auto next = (mode + (direction > 0 ? 1 : 2)) % 3;
+        settings.resolution_check = next == 2; settings.resolution_export = next == 1;
+    }
     else if (row == ExportRow::resolution) settings.resolution = (settings.resolution + (direction > 0 ? 1 : 2)) % 3;
     if (!save_locked()) settings = previous;
 }
 bool vyne::export_row_enabled(ExportRow row) noexcept {
     return row == ExportRow::mode || row == ExportRow::directory ||
-        (row == ExportRow::resolution && resolution_check_enabled());
+        (row == ExportRow::resolution && (resolution_check_enabled() || export_settings().resolution_export));
 }
 const char* vyne::export_row_label(ExportRow row) noexcept {
-    constexpr const char* labels[] = {"VYNE export", "Check resolution", "VYNE frame rate", "VYNE bitrate", "VYNE file format", "VYNE color profile", "Output location"};
+    constexpr const char* labels[] = {"VYNE export", "VYNE resolution", "VYNE frame rate", "VYNE bitrate", "VYNE file format", "VYNE color profile", "Output location"};
     const auto i = static_cast<unsigned>(row); return i < 7 ? labels[i] : "VYNE";
 }
 const char* vyne::export_row_help(ExportRow row) noexcept {
     switch (row) {
-    case ExportRow::mode: return "Native export uses Rockstar's encoder and copies the finished MP4 to Output location. Resolution check only tests the selected render mode for five seconds and restores; it creates no video.";
-    case ExportRow::resolution: return "Applies only to Resolution check, which creates no video. Native export uses Rockstar's own output dimensions; this control cannot produce a 4K clip. VYNE full-resolution capture is not implemented yet.";
+    case ExportRow::mode: return "Render export switches the game render mode, exports using GTA's native frame timing and audio with the 1080p clamp bypassed, then restores the original mode. Native export keeps stock dimensions. Resolution check creates no video.";
+    case ExportRow::resolution: return "Used by Render export and Resolution check. Export waits for the requested GPU dimensions before starting. A mismatched source or capture target cancels the export; no upscale fallback is used.";
     case ExportRow::directory: return "Press left or right to choose where finished native MP4 exports are copied. The Video Gallery original is preserved. The Windows folder picker runs separately from the render thread.";
-    case ExportRow::fps: return "VYNE replay timing is not implemented yet. Use the stock frame-rate control with Native export.";
-    case ExportRow::bitrate: return "VYNE encoding is not implemented yet. Use the stock bitrate control with Native export.";
+    case ExportRow::fps: return "Custom VYNE frame rates are not implemented yet. Use the stock frame-rate control with Render export or Native export.";
+    case ExportRow::bitrate: return "Custom VYNE bitrate control is not implemented yet. Use the stock bitrate control with Render export or Native export.";
     case ExportRow::format: return "MP4/H.264 and PNG sequence backends are not implemented yet. This option stays disabled until real output is available.";
     default: return "VYNE color conversion and output tagging are not implemented yet. No unsupported color profile is advertised.";
     }
@@ -119,8 +125,8 @@ const char* vyne::export_row_help(ExportRow row) noexcept {
 std::string vyne::export_row_value(ExportRow row) {
     const auto value = export_settings();
     switch (row) {
-    case ExportRow::mode: return value.resolution_check ? "Resolution check" : "Native export";
-    case ExportRow::resolution: return value.resolution_check ? std::to_string(export_width(value.resolution)) + " x " + std::to_string(export_height(value.resolution)) : "Game settings";
+    case ExportRow::mode: return value.resolution_check ? "Resolution check" : value.resolution_export ? "Render export" : "Native export";
+    case ExportRow::resolution: return value.resolution_check || value.resolution_export ? std::to_string(export_width(value.resolution)) + " x " + std::to_string(export_height(value.resolution)) : "Game settings";
     case ExportRow::directory: {
         if (picker_open.load()) return "Choosing folder...";
         auto name = value.output.lexically_normal().filename().wstring();

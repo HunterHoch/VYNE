@@ -42,7 +42,7 @@ int main() {
     require(!export_row_enabled(ExportRow::format) && !export_row_enabled(ExportRow::color), "unimplemented formats/color cannot be offered as working");
     const auto directory = std::filesystem::absolute("build") / (L"settings-test-" + std::to_wstring(GetCurrentProcessId()));
     std::filesystem::create_directories(directory);
-    const std::wstring seed = L"\xfeff[Export]\r\nResolutionCheck=0\r\nResolution=99\r\nDirectory=D:\\VYNE test é\\影像\r\n";
+    const std::wstring seed = L"\xfeff[Export]\r\nResolutionCheck=0\r\nResolutionExport=0\r\nResolution=99\r\nDirectory=D:\\VYNE test é\\影像\r\n";
     std::ofstream file(directory / L"Export.ini", std::ios::binary);
     file.write(reinterpret_cast<const char*>(seed.data()), static_cast<std::streamsize>(seed.size() * sizeof(wchar_t))); file.close();
     initialize_export_settings(directory);
@@ -50,6 +50,10 @@ int main() {
     require(export_settings().resolution == 2, "invalid stored resolution normalized");
     require(export_settings().output == std::filesystem::path(L"D:\\VYNE test é\\影像"), "Unicode output path survives Windows INI loading");
     require(export_row_value(ExportRow::directory) == std::filesystem::path(L"影像").u8string(), "row shows short folder name instead of overlapping full path");
+    step_export_setting(ExportRow::mode, 1);
+    require(export_settings().resolution_export && export_row_enabled(ExportRow::resolution), "selected-resolution export enables target dimensions");
+    initialize_export_settings(directory);
+    require(export_settings().resolution_export && !export_settings().resolution_check, "selected-resolution export persists independently from check mode");
     step_export_setting(ExportRow::mode, 1); step_export_setting(ExportRow::resolution, 1);
     initialize_export_settings(directory);
     require(export_settings().resolution_check && export_settings().resolution == 0, "menu settings persist and reload through the Windows profile API");
