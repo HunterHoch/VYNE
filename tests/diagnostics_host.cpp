@@ -19,7 +19,7 @@ int main() {
     if (!run() || std::filesystem::file_size(log_path) != first_size) return 3;
     std::ifstream input(log_path);
     const std::string log{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
-    if (log.find("export_hooks=disabled") == std::string::npos ||
+    if (log.find("export_hooks=pending_validation") == std::string::npos ||
         log.find("render_target_dimensions=unmeasured") == std::string::npos) return 4;
     FreeLibrary(module);
     std::cout << "PASS: x64 ASI load, exported diagnostics, file output, once-only initialization, unload.\n";

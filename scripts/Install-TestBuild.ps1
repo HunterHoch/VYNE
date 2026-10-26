@@ -17,14 +17,13 @@ if (Test-Path -LiteralPath $destination) {
 }
 New-Item -ItemType Directory -Path $configDirectory -Force | Out-Null
 $configuration = Join-Path $configDirectory 'VYNE.ini'
-if ($EnableModeProbe -or !(Test-Path -LiteralPath $configuration)) {
-    if (Test-Path -LiteralPath $configuration) {
-        $configBackup = Join-Path $projectRoot ('build\VYNE-ini-backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff') + '.ini')
-        Copy-Item -LiteralPath $configuration -Destination $configBackup
-    }
-    $enabled = if ($EnableModeProbe) { 1 } else { 0 }
-    Set-Content -LiteralPath $configuration -Value "[Diagnostics]`r`nEnableModeProbe=$enabled" -Encoding ascii
+if (Test-Path -LiteralPath $configuration) {
+    $configBackup = Join-Path $projectRoot ('build\VYNE-ini-backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff') + '.ini')
+    Copy-Item -LiteralPath $configuration -Destination $configBackup
 }
+$enabled = if ($EnableModeProbe) { 1 } else { 0 }
+Set-Content -LiteralPath $configuration -Value "[Diagnostics]`r`nEnableExportMenu=1`r`nEnableModeProbe=$enabled" -Encoding ascii
+Copy-Item -LiteralPath (Join-Path $projectRoot 'vendor\minhook\LICENSE.txt') -Destination (Join-Path $configDirectory 'MinHook-LICENSE.txt') -Force
 Copy-Item -LiteralPath $sourceBinary -Destination $destination -Force
 Get-FileHash -LiteralPath $sourceBinary, $destination
 Write-Output 'Installed VYNE only. Existing unrelated plugins and game settings were not changed.'

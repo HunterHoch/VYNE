@@ -3,6 +3,7 @@
 #include <fstream>
 #include <vector>
 #include "native_mode_probe.h"
+#include "export_menu.h"
 
 namespace {
 HMODULE plugin_module = nullptr;
@@ -44,7 +45,7 @@ BOOL CALLBACK diagnose(PINIT_ONCE, PVOID, PVOID*) noexcept {
         if (!log) return FALSE;
         SYSTEMTIME time{};
         GetSystemTime(&time);
-        log << L"VYNE 0.2.0 diagnostics UTC " << time.wYear << L'-' << time.wMonth
+        log << L"VYNE 0.3.0 diagnostics UTC " << time.wYear << L'-' << time.wMonth
             << L'-' << time.wDay << L' ' << time.wHour << L':' << time.wMinute << L':' << time.wSecond
             << L"\npid=" << GetCurrentProcessId() << L"\nplugin=" << own_path << L"\n";
         const auto host = module_path(nullptr);
@@ -56,7 +57,7 @@ BOOL CALLBACK diagnose(PINIT_ONCE, PVOID, PVOID*) noexcept {
         }
         log << L"render_api=unverified (loaded DLLs do not prove active renderer)\n"
             << L"game_build=unverified (host file version is diagnostic only)\n"
-            << L"export_hooks=disabled\nrender_target_dimensions=unmeasured\n";
+            << L"export_hooks=pending_validation (see export-menu.log)\nrender_target_dimensions=unmeasured\n";
         log.flush();
         return log.good() ? TRUE : FALSE;
     } catch (...) {
@@ -84,6 +85,7 @@ DWORD WINAPI startup(void*) {
     if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
         reinterpret_cast<LPCWSTR>(&startup), &reference)) return 1;
     VYNE_RunDiagnostics();
+    vyne::install_export_menu(plugin_module);
     vyne::start_native_mode_probe(plugin_module);
     FreeLibraryAndExitThread(reference, 0);
 }

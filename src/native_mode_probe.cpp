@@ -19,6 +19,10 @@ std::filesystem::path directory;
 std::unique_ptr<vyne::GraphicsModeSession> session;
 std::uint64_t frame_number = 0, restore_at = 0;
 bool key_down = false;
+bool hotkeys_enabled = false;
+std::atomic_bool probe_ready{false}, probe_busy{false};
+std::atomic<std::uint64_t> queued_dimensions{0};
+std::atomic_int probe_phase{0};
 
 void note(const std::string& message) {
     std::ofstream log(directory / L"mode-probe.log", std::ios::app);
@@ -82,23 +86,32 @@ bool write_recovery(const vyne::GraphicsState& state) {
 void probe_tick() {
     ++frame_number;
     const auto now = GetTickCount64();
-    const bool pressed = (GetAsyncKeyState(VK_F6) & 0x8000) != 0;
+    const bool pressed = hotkeys_enabled && (GetAsyncKeyState(VK_F6) & 0x8000) != 0;
     DXGI_SWAP_CHAIN_DESC desc{};
     const bool foreground = SUCCEEDED(game_chain->GetDesc(&desc)) &&
         GetForegroundWindow() == desc.OutputWindow;
-    if (pressed && !key_down && foreground && !session) {
+    auto queued = queued_dimensions.exchange(0);
+    if (pressed && !key_down && foreground && !session && !probe_busy.exchange(true)) {
+        queued = (std::uint64_t{3840} << 32) | 2160;
+    }
+    if (queued && foreground && !session) {
         vyne::GraphicsState before{};
         if (!snapshot(nullptr, before) || !write_recovery(before)) {
             note("refused: stable windowed mode/recovery snapshot unavailable");
+            probe_phase.store(-1); probe_busy.store(false);
         } else {
-            auto target = before; target.width = 3840; target.height = 2160;
+            auto target = before; target.width = static_cast<unsigned>(queued >> 32); target.height = static_cast<unsigned>(queued);
             target.native_state[0] = target.width; target.native_state[1] = target.height;
             session = std::make_unique<vyne::GraphicsModeSession>(
                 vyne::GraphicsBackend{nullptr, snapshot, request, dimensions, true});
-            note("requested=3840x2160 original=" + std::to_string(before.width) + "x" + std::to_string(before.height));
+            note("requested=" + std::to_string(target.width) + "x" + std::to_string(target.height) + " original=" + std::to_string(before.width) + "x" + std::to_string(before.height));
+            probe_phase.store(2);
             session->begin(target, now);
             if (!session->error().empty()) note(session->error());
         }
+    } else if (queued) {
+        probe_phase.store(-1); probe_busy.store(false);
+        note("menu request refused: game not focused or another session is active");
     }
     key_down = pressed;
     if (!session) return;
@@ -107,19 +120,26 @@ void probe_tick() {
     session->tick(now);
     if (session->status() == vyne::ModeStatus::ready && !restore_at) {
         restore_at = now + 5000;
-        note("measured_backbuffer=3840x2160 stable_frames=3 scene_target=UNVERIFIED restore_in_ms=5000");
+        vyne::RenderDimensions measured{}; dimensions(nullptr, measured);
+        probe_phase.store(3);
+        note("measured_backbuffer=" + std::to_string(measured.width) + "x" + std::to_string(measured.height) + " stable_frames=3 scene_target=UNVERIFIED restore_in_ms=5000");
     }
     if (restore_at && now >= restore_at) session->finish(now);
+    if (session->status() == vyne::ModeStatus::restoring) probe_phase.store(4);
     if (session->status() != prior) note("state=" + std::to_string(static_cast<int>(session->status())) + " " + session->error());
     if (session->status() == vyne::ModeStatus::restored) {
         note("restore_verified=original_queue_and_backbuffer (not a completed export)");
         std::ofstream recovery(directory / L"mode-recovery.txt", std::ios::trunc);
         recovery << "restored\n";
         session.reset(); restore_at = 0;
+        probe_phase.store(5); probe_busy.store(false);
     } else if (session->status() == vyne::ModeStatus::restore_failed) {
         // Keep the session and recovery record. Never silently re-arm after
         // failure; user must inspect settings and restart the diagnostic.
         restore_at = 0;
+        probe_phase.store(-2);
+    } else if (session->status() == vyne::ModeStatus::failed) {
+        note(session->error()); session.reset(); probe_phase.store(-1); probe_busy.store(false);
     }
 }
 
@@ -156,7 +176,9 @@ void vyne::start_native_mode_probe(HMODULE module) noexcept {
         wchar_t path[32768]{};
         if (!GetModuleFileNameW(module, path, 32768)) return;
         directory = std::filesystem::path(path).parent_path() / L"VYNE";
-        if (GetPrivateProfileIntW(L"Diagnostics", L"EnableModeProbe", 0, (directory / L"VYNE.ini").c_str()) != 1) return;
+        hotkeys_enabled = GetPrivateProfileIntW(L"Diagnostics", L"EnableModeProbe", 0, (directory / L"VYNE.ini").c_str()) == 1;
+        const bool menu_enabled = GetPrivateProfileIntW(L"Diagnostics", L"EnableExportMenu", 1, (directory / L"VYNE.ini").c_str()) == 1;
+        if (!hotkeys_enabled && !menu_enabled) return;
         std::filesystem::create_directories(directory);
         wchar_t host[32768]{}; GetModuleFileNameW(nullptr, host, 32768);
         if (std::filesystem::path(host).filename() != L"FiveM_b3258_GTAProcess.exe") {
@@ -194,6 +216,30 @@ void vyne::start_native_mode_probe(HMODULE module) noexcept {
         const auto previous = InterlockedCompareExchangePointer(slot, reinterpret_cast<void*>(&on_present), original);
         DWORD unused{}; VirtualProtect(slot, sizeof(void*), old_protection, &unused);
         if (previous != original) { note("refused: another component changed Present during setup"); return; }
-        note("armed: F6 requests 4K for five seconds; F7 or focus loss cancels; native export untouched");
+        probe_ready.store(true); probe_phase.store(1);
+        note("armed: native VYNE menu can request a resolution check; F7 or focus loss cancels; legacy F6=" + std::to_string(hotkeys_enabled));
     } catch (...) { OutputDebugStringW(L"VYNE: optional mode probe initialization failed.\n"); }
+}
+
+bool vyne::queue_resolution_check(unsigned width, unsigned height) noexcept {
+    if (!probe_ready.load() || probe_busy.exchange(true)) return false;
+    if (!((width == 1920 && height == 1080) || (width == 2560 && height == 1440) || (width == 3840 && height == 2160))) {
+        probe_busy.store(false); return false;
+    }
+    queued_dimensions.store((static_cast<std::uint64_t>(width) << 32) | height);
+    probe_phase.store(2);
+    return true;
+}
+bool vyne::resolution_check_busy() noexcept { return probe_busy.load(); }
+const char* vyne::resolution_check_status() noexcept {
+    switch (probe_phase.load()) {
+    case 1: return "Ready for resolution check";
+    case 2: return "Switching resolution";
+    case 3: return "Target reached; restoring shortly";
+    case 4: return "Restoring original resolution";
+    case 5: return "Original resolution restored";
+    case -1: return "Resolution check refused; see mode-probe.log";
+    case -2: return "Restore failed; inspect recovery record";
+    default: return "Resolution backend unavailable; see mode-probe.log";
+    }
 }

@@ -8,15 +8,16 @@ Phase 1 modernizes the existing export screen: true temporary render resolution 
 
 Original Windows x64 diagnostic ASI. Automatic loading in FiveM build 3258 is confirmed by the installed plugin's diagnostic log. FiveM uses LoadLibrary and requires an `FX_ASI_BUILD` resource; initialization therefore runs on a short worker after the loader lock is released. The current resource declares build 3258 only.
 
-Version 0.2.0 includes a default-off build3258-only mode probe and a tested switch/restore state machine. See [the probe guide](docs/mode-probe.md). No Export UI takeover, clean scene capture or encoding yet. The user owns in-game testing; do not drive the game or run further runtime experiments unless requested.
+Version 0.3.0 integrates VYNE into the native Export menu. See [native menu controls](docs/native-export-menu.md). Select **VYNE export → Resolution check**, select the resolution, then press the existing **Export** action for the switch/restore feasibility check. Stock export remains available with VYNE Off. Encoding-dependent rows are visibly disabled; clean scene capture, replay cadence, media encoding and audio are not implemented yet. The user owns in-game testing; do not drive the game or run runtime experiments unless requested.
 
 The earlier game-script/render-command probe was removed after a reported clip-load crash. The user confirmed the same crash with VYNE removed, then recorded a new clip and saved a working project, VYNE_Test. The exact old-clip failure remains unresolved. With FiveM closed, the new 0.2.0 probe was installed and explicitly enabled for the user's first mode-switch test. No mode-switch success is claimed yet.
 
 ## Build
 
-With a Windows x64 C++ compiler and Windows SDK:
+With a Windows x64 C++ compiler and Windows SDK, initialize the pinned MinHook submodule before building:
 
 ```powershell
+git submodule update --init
 cmake -S . -B build -A x64
 cmake --build build --config Release
 ```
