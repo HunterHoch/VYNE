@@ -1,0 +1,80 @@
+#include <windows.h>
+#include <filesystem>
+#include <fstream>
+#include <vector>
+
+namespace {
+HMODULE plugin_module = nullptr;
+INIT_ONCE initialized = INIT_ONCE_STATIC_INIT;
+
+std::wstring module_path(HMODULE module) {
+    std::vector<wchar_t> buffer(32768);
+    const auto length = GetModuleFileNameW(module, buffer.data(), static_cast<DWORD>(buffer.size()));
+    if (length == 0 || length >= buffer.size()) return L"";
+    return {buffer.data(), length};
+}
+
+void write_version(std::wofstream& log, const std::wstring& path) {
+    DWORD unused = 0;
+    const DWORD size = GetFileVersionInfoSizeW(path.c_str(), &unused);
+    std::vector<BYTE> data(size);
+    if (!size || !GetFileVersionInfoW(path.c_str(), 0, size, data.data())) {
+        log << L"host_file_version=unavailable\n";
+        return;
+    }
+    VS_FIXEDFILEINFO* info = nullptr;
+    UINT length = 0;
+    if (VerQueryValueW(data.data(), L"\\", reinterpret_cast<void**>(&info), &length)
+        && length >= sizeof(VS_FIXEDFILEINFO) && info->dwSignature == 0xfeef04bd) {
+        log << L"host_file_version=" << HIWORD(info->dwFileVersionMS) << L'.'
+            << LOWORD(info->dwFileVersionMS) << L'.' << HIWORD(info->dwFileVersionLS)
+            << L'.' << LOWORD(info->dwFileVersionLS) << L"\n";
+    }
+}
+
+BOOL CALLBACK diagnose(PINIT_ONCE, PVOID, PVOID*) noexcept {
+    try {
+        const auto own_path = module_path(plugin_module);
+        if (own_path.empty()) return FALSE;
+        const auto directory = std::filesystem::path(own_path).parent_path() / L"VYNE";
+        std::filesystem::create_directories(directory);
+        std::wofstream log(directory / L"diagnostics.log", std::ios::app);
+        if (!log) return FALSE;
+        SYSTEMTIME time{};
+        GetSystemTime(&time);
+        log << L"VYNE 0.1.0 diagnostics UTC " << time.wYear << L'-' << time.wMonth
+            << L'-' << time.wDay << L' ' << time.wHour << L':' << time.wMinute << L':' << time.wSecond
+            << L"\npid=" << GetCurrentProcessId() << L"\nplugin=" << own_path << L"\n";
+        const auto host = module_path(nullptr);
+        log << L"host=" << host << L"\n";
+        write_version(log, host);
+        for (const auto name : {L"d3d11.dll", L"d3d12.dll", L"dxgi.dll", L"ScriptHookV.dll"}) {
+            const auto module = GetModuleHandleW(name);
+            log << name << L"=" << (module ? module_path(module) : L"not loaded") << L"\n";
+        }
+        log << L"render_api=unverified (loaded DLLs do not prove active renderer)\n"
+            << L"game_build=unverified (host file version is diagnostic only)\n"
+            << L"export_hooks=disabled\nrender_target_dimensions=unmeasured\n";
+        log.flush();
+        return log.good() ? TRUE : FALSE;
+    } catch (...) {
+        OutputDebugStringW(L"VYNE: diagnostics failed; no game changes applied.\n");
+        return FALSE;
+    }
+}
+}
+
+// Explicit initialization keeps filesystem/version queries outside the loader lock.
+// The FiveM loader integration must be validated before deployment.
+extern "C" __declspec(dllexport) BOOL VYNE_RunDiagnostics() noexcept {
+    return InitOnceExecuteOnce(&initialized, diagnose, nullptr, nullptr);
+}
+
+extern "C" __declspec(dllexport) void InitializeASI() noexcept {
+    VYNE_RunDiagnostics();
+}
+
+BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID) {
+    if (reason == DLL_PROCESS_ATTACH) plugin_module = module;
+    return TRUE;
+}
